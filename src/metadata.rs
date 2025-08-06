@@ -6,6 +6,10 @@ use exif;
 pub struct MetadataHandler;
 
 impl MetadataHandler {
+    /// Get all metadata as a key-value map (for dry-run and inspection)
+    pub fn get_metadata_map(&self, path: &Path) -> Result<HashMap<String, String>> {
+        self.extract_metadata(path)
+    }
     pub fn new() -> Self {
         Self
     }

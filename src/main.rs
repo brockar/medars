@@ -46,6 +46,9 @@ enum Commands {
         /// Copy to new file (optional path, or auto-name if not provided)
         #[arg(long, value_name = "COPY_PATH")]
         copy: Option<Option<PathBuf>>,
+        /// Dry run: show what would be removed, but do not modify the file
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Launch interactive mode (TUI)
@@ -91,8 +94,25 @@ async fn main() -> anyhow::Result<()> {
                     eprintln!("Error: {}", e);
                 }
             }
-            Commands::Remove { file, output, copy } => {
+            Commands::Remove { file, output, copy, dry_run } => {
                 let handler = MetadataHandler::new();
+                if *dry_run {
+                    // Show what would be removed (list all metadata keys)
+                    let meta = handler.get_metadata_map(&file)?;
+                    if meta.is_empty() {
+                        if !cli.quiet {
+                            println!("✅ No metadata found in image (nothing to remove)");
+                        }
+                    } else {
+                        if !cli.quiet {
+                            println!("The following metadata would be removed from {}:", file.display());
+                            for (k, v) in meta.iter() {
+                                println!("- {}: {}", k, v);
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
                 let output_path = if let Some(copy_flag) = copy {
                     match copy_flag {
                         Some(path) => path.clone(),
@@ -127,7 +147,6 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
-                // If --copy is used, copy the input file to the output path first
                 if copy.is_some() {
                     // Only copy if output_path != file
                     if output_path != *file {
