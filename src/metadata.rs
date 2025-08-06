@@ -133,14 +133,66 @@ impl MetadataHandler {
             }
             return Ok(());
         }
+        // Sensitivity classification (updated)
+        let red_keys = [
+            "GPSLatitude", "GPSLongitude", "GPSAltitude", "GPSLatitudeRef", "GPSLongitudeRef", "GPSAltitudeRef",
+            "DateTimeOriginal", "DateTimeDigitized", "DateTime", "OffsetTime", "OffsetTimeOriginal", "Modified",
+            "ImageUniqueID"
+        ];
+        let yellow_keys = [
+            "Make", "Model", "Software", "SceneCaptureType", "DigitalZoomRatio", "FNumber", "ExposureBiasValue",
+            "ExposureMode", "MeteringMode", "ShutterSpeedValue", "ExposureTime", "WhiteBalance", "ApertureValue",
+            "FocalLength", "FocalLengthIn35mmFilm", "PhotographicSensitivity", "Flash", "ExposureProgram", "ExifVersion",
+            "MaxApertureValue"
+        ];
+        let green_keys = [
+            "PixelXDimension", "PixelYDimension", "ImageWidth", "ImageLength", "Dimensions", "Compression", "ColorSpace",
+            "XResolution", "YResolution", "ResolutionUnit", "YCbCrPositioning", "JPEGInterchangeFormat", 
+            "JPEGInterchangeFormatLength", "File Size", "Orientation"
+        ];
         if !quiet {
-            println!("📋 Image Metadata:");
+            // First, count types
+            let mut count_red = 0;
+            let mut count_yellow = 0;
+            let mut count_green = 0;
+            let mut count_unrec = 0;
+            for key in metadata.keys() {
+                if red_keys.contains(&key.as_str()) {
+                    count_red += 1;
+                } else if yellow_keys.contains(&key.as_str()) {
+                    count_yellow += 1;
+                } else if green_keys.contains(&key.as_str()) {
+                    count_green += 1;
+                } else {
+                    count_unrec += 1;
+                }
+            }
+            let total = count_red + count_yellow + count_green + count_unrec;
+            // Print the summary
             println!("{}", "─".repeat(60));
+            println!("🔴 Insecure: {}", count_red);
+            println!("🟡 Better to remove: {}", count_yellow);
+            println!("🟢 Safe to share: {}", count_green);
+            if count_unrec > 0 {
+                println!("⚪ Unrecognized: {}", count_unrec);
+            }
+            println!("📊 Total metadata fields: {}", total);
+            // Now print the table
+            println!("{}", "─".repeat(60));
+            println!("📋 Image Metadata:");
             for (key, value) in metadata {
-                println!("{}: {}", key, value);
+                let color = if red_keys.contains(&key.as_str()) {
+                    "\x1b[31m" // Red
+                } else if yellow_keys.contains(&key.as_str()) {
+                    "\x1b[33m" // Yellow
+                } else if green_keys.contains(&key.as_str()) {
+                    "\x1b[32m" // Green
+                } else {
+                    "\x1b[0m" // Default
+                };
+                println!("{}{}: {}\x1b[0m", color, key, value);
             }
             println!("{}", "─".repeat(60));
-            println!("📊 Total metadata fields: {}", metadata.len());
         }
         Ok(())
     }
