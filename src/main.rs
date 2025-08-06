@@ -43,6 +43,9 @@ enum Commands {
         /// Output file path (if not specified, overwrites original)
         #[arg(short, long)]
         output: Option<PathBuf>,
+        /// Copy to new file (optional path, or auto-name if not provided)
+        #[arg(long, value_name = "COPY_PATH")]
+        copy: Option<Option<PathBuf>>,
     },
 
     /// Launch interactive mode (TUI)
@@ -88,9 +91,49 @@ async fn main() -> anyhow::Result<()> {
                     eprintln!("Error: {}", e);
                 }
             }
-            Commands::Remove { file, output } => {
+            Commands::Remove { file, output, copy } => {
                 let handler = MetadataHandler::new();
-                let output_path = output.as_ref().cloned().unwrap_or_else(|| file.clone());
+                let output_path = if let Some(copy_flag) = copy {
+                    match copy_flag {
+                        Some(path) => path.clone(),
+                        None => {
+                            // Auto-generate output path: original stem + _medars + ext
+                            let orig = file;
+                            let parent = orig.parent();
+                            let stem = orig.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+                            let ext = orig.extension().and_then(|e| e.to_str()).unwrap_or("");
+                            let mut new_name = format!("{}_medars", stem);
+                            if !ext.is_empty() {
+                                new_name.push('.');
+                                new_name.push_str(ext);
+                            }
+                            if let Some(parent) = parent {
+                                parent.join(new_name)
+                            } else {
+                                PathBuf::from(new_name)
+                            }
+                        }
+                    }
+                } else {
+                    output.as_ref().cloned().unwrap_or_else(|| file.clone())
+                };
+                if let Some(parent) = output_path.parent() {
+                    // Only try to create if parent is not empty and not "." (current dir)
+                    if parent != std::path::Path::new("") && parent != std::path::Path::new(".") && !parent.exists() {
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            log::error!("Failed to create output directory {}: {}", parent.display(), e);
+                            eprintln!("Failed to create output directory {}: {}", parent.display(), e);
+                            return Err(e.into());
+                        }
+                    }
+                }
+                // If --copy is used, copy the input file to the output path first
+                if copy.is_some() {
+                    // Only copy if output_path != file
+                    if output_path != *file {
+                        std::fs::copy(&file, &output_path)?;
+                    }
+                }
                 handler.remove_metadata(&file, &output_path)?;
                 if !cli.quiet {
                     log::info!("✅ Metadata removed successfully, saved on: {}", output_path.display());
