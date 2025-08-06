@@ -7,14 +7,14 @@ use ui::RatatuiUI;
 
 #[derive(Parser)]
 #[command(name = "medars")]
-#[command(about = "A CLI tool to inspect and remove metadata from image files")]
+#[command(about = "Inspect, view, or strip metadata from images — fast and easy. (Also works in TUI!)")]
 #[command(version = "0.1.0")]
 
 struct Cli {
     /// Suppress output
     #[arg(short, long, global = true)]
     quiet: bool,
-    /// Optional file argument for default interactive mode
+    /// Image file to inspect
     #[arg(value_name = "FILE")]
     file: Option<PathBuf>,
     #[command(subcommand)]
@@ -45,7 +45,7 @@ enum Commands {
         output: Option<PathBuf>,
     },
 
-    /// Interactive mode with TUI
+    /// Launch interactive mode (TUI)
     Interactive {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
