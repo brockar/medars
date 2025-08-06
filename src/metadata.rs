@@ -16,15 +16,88 @@ impl MetadataHandler {
         if metadata.is_empty() {
             return Ok("❌ No metadata found".to_string());
         }
-        let mut table = String::from("📋 Image Metadata:\n");
-        table.push_str(&"─".repeat(40));
-        table.push('\n');
-        for (key, value) in &metadata {
-            table.push_str(&format!("{}: {}\n", key, value));
+
+        let has_exif = metadata.keys().any(|k| k != "File Size" && k != "Modified" && k != "Dimensions");
+        if !has_exif {
+            let mut table = String::new();
+            table.push_str("No metadata in this image.\n");
+            if let Some(size) = metadata.get("File Size") {
+                table.push_str(&format!("File Size: {}\n", size));
+            }
+            if let Some(modified) = metadata.get("Modified") {
+                table.push_str(&format!("Modified: {}\n", modified));
+            }
+            if let Some(dim) = metadata.get("Dimensions") {
+                table.push_str(&format!("Dimensions: {}\n", dim));
+            }
+            return Ok(table);
         }
-        table.push_str(&"─".repeat(40));
+
+        // Sensitivity classification (same as display_table)
+        let red_keys = [
+            "GPSLatitude", "GPSLongitude", "GPSAltitude", "GPSLatitudeRef", "GPSLongitudeRef", "GPSAltitudeRef",
+            "DateTimeOriginal", "DateTimeDigitized", "DateTime", "OffsetTime", "OffsetTimeOriginal", "Modified",
+            "ImageUniqueID"
+        ];
+        let yellow_keys = [
+            "Make", "Model", "Software", "SceneCaptureType", "DigitalZoomRatio", "FNumber", "ExposureBiasValue",
+            "ExposureMode", "MeteringMode", "ShutterSpeedValue", "ExposureTime", "WhiteBalance", "ApertureValue",
+            "FocalLength", "FocalLengthIn35mmFilm", "PhotographicSensitivity", "Flash", "ExposureProgram", "ExifVersion",
+            "MaxApertureValue"
+        ];
+        let green_keys = [
+            "PixelXDimension", "PixelYDimension", "ImageWidth", "ImageLength", "Dimensions", "Compression", "ColorSpace",
+            "XResolution", "YResolution", "ResolutionUnit", "YCbCrPositioning", "JPEGInterchangeFormat", 
+            "JPEGInterchangeFormatLength", "File Size", "Orientation"
+        ];
+
+        // Count types
+        let mut count_red = 0;
+        let mut count_yellow = 0;
+        let mut count_green = 0;
+        let mut count_unrec = 0;
+        for key in metadata.keys() {
+            if red_keys.contains(&key.as_str()) {
+                count_red += 1;
+            } else if yellow_keys.contains(&key.as_str()) {
+                count_yellow += 1;
+            } else if green_keys.contains(&key.as_str()) {
+                count_green += 1;
+            } else {
+                count_unrec += 1;
+            }
+        }
+        let total = count_red + count_yellow + count_green + count_unrec;
+
+        // Build the enhanced table
+        let mut table = String::new();
+        table.push_str(&"─".repeat(60));
         table.push('\n');
-        table.push_str(&format!("📊 Total metadata fields: {}", metadata.len()));
+        table.push_str(&format!("🔴 Insecure: {}\n", count_red));
+        table.push_str(&format!("🟡 Better to remove: {}\n", count_yellow));
+        table.push_str(&format!("🟢 Safe to share: {}\n", count_green));
+        if count_unrec > 0 {
+            table.push_str(&format!("⚪ Unrecognized: {}\n", count_unrec));
+        }
+        table.push_str(&format!("🔘 Total metadata fields: {}\n", total));
+        table.push_str(&"─".repeat(60));
+        table.push('\n');
+        table.push_str("📋 Image Metadata:\n");
+        
+        for (key, value) in &metadata {
+            let emoji = if red_keys.contains(&key.as_str()) {
+                "🔴" // Red
+            } else if yellow_keys.contains(&key.as_str()) {
+                "🟡" // Yellow
+            } else if green_keys.contains(&key.as_str()) {
+                "🟢" // Green
+            } else {
+                "⚪" // Unrecognized
+            };
+            table.push_str(&format!("{} {}: {}\n", emoji, key, value));
+        }
+        table.push_str(&"─".repeat(60));
+        
         Ok(table)
     }
 
