@@ -1,6 +1,0 @@
-- [ ] Detect if an image contains metadata
-- [ ] View metadata in a clean, readable format
-- [ ] Remove metadata from images
-- [ ] Show image
-  - viuer if the terminal can render
-  - termimage if the terminal can't render
