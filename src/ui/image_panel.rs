@@ -6,9 +6,17 @@ pub fn render_image_panel(
     area: Rect,
     file_name: &str,
 ) {
-    // For now, just show the file name. Replace with image rendering later.
-    let name_widget = Paragraph::new(file_name)
-        .block(Block::default().title("File Name").borders(Borders::ALL))
+    // Show the file name centered, a few lines down from the top border.
+    use ratatui::prelude::Alignment;
+    let file_name_widget = Paragraph::new(file_name)
+        .alignment(Alignment::Center)
         .wrap(Wrap { trim: false });
-    f.render_widget(name_widget, area);
+    // Offset the area downward to avoid overlapping the panel title
+    let inner_area = Rect {
+        x: area.x,
+        y: area.y + 2, // 2 lines below the top border/title
+        width: area.width,
+        height: area.height.saturating_sub(2),
+    };
+    f.render_widget(file_name_widget, inner_area);
 }

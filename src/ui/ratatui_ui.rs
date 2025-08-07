@@ -1,14 +1,23 @@
+#[derive(Copy, Clone, PartialEq)]
+enum FocusedPanel {
+    Left,
+    Middle,
+}
 use std::path::PathBuf;
 use anyhow::Result;
 use crate::ui::image_panel::render_image_panel;
+use crate::ui::image_utils::ImageUtils;
 
 pub struct RatatuiUI {
-    image_state: Option<()>, // Placeholder, remove image state for now
+    image_utils: ImageUtils,
 }
+
 
 impl RatatuiUI {
     pub fn new() -> Self {
-        RatatuiUI { image_state: None }
+        RatatuiUI {
+            image_utils: ImageUtils::new(),
+        }
     }
 
     pub async fn run(&mut self, file: Option<PathBuf>) -> Result<()> {
@@ -85,9 +94,28 @@ impl RatatuiUI {
             }).collect(),
             Err(_) => vec![],
         };
+
         let mut selected = 0;
+        let mut previous_selected = usize::MAX; // Force initial load
+        let mut cached_metadata_text = String::new();
+        let mut focused_panel = FocusedPanel::Left;
+        let mut mid_scroll: u16 = 0;
 
         while running {
+            // Update metadata cache only when selection changes
+            if selected != previous_selected {
+                if !files.is_empty() {
+                    let selected_file = &files[selected];
+                    let file_path = dir.join(selected_file);
+                    cached_metadata_text = self.image_utils.get_metadata_for_display(selected_file, &file_path);
+                } else {
+                    cached_metadata_text = "No files found".to_string();
+                }
+                previous_selected = selected;
+                mid_scroll = 0;
+            }
+
+
             terminal.draw(|f| {
                 let area = f.area();
                 let chunks = Layout::default()
@@ -108,24 +136,57 @@ impl RatatuiUI {
                         ListItem::new(f.to_string())
                     }
                 }).collect();
+                let left_border_style = if focused_panel == FocusedPanel::Left {
+                    Style::default().fg(Color::LightBlue)
+                } else {
+                    Style::default()
+                };
                 let file_list = List::new(file_items)
-                    .block(Block::default().title("Files").borders(Borders::ALL))
-                    .highlight_style(Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD));
+                .block(Block::default()
+                    .title(Span::styled(
+                        "Files",
+                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                    ))
+                    .borders(Borders::ALL)
+                    .border_style(left_border_style)
+                    .title_alignment(Alignment::Center)
+                )
+                    .highlight_style(Style::default().fg(Color::LightBlue).add_modifier(Modifier::BOLD));
                 f.render_widget(file_list, chunks[0]);
 
-                // Middle: Metadata (placeholder)
-                let metadata = if !files.is_empty() {
-                    format!("File: {}\nType: JPEG\nSize: 2.1MB\nEXIF: Present\nGPS: None", files[selected])
+                // Middle: Metadata (cached to avoid re-reading every frame)
+                let mid_border_style = if focused_panel == FocusedPanel::Middle {
+                    Style::default().fg(Color::LightBlue)
                 } else {
-                    "No files found".to_string()
+                    Style::default()
                 };
-                let metadata_paragraph = Paragraph::new(metadata)
-                    .block(Block::default().title("Metadata").borders(Borders::ALL))
-                    .wrap(Wrap { trim: true });
+                let metadata_paragraph = Paragraph::new(cached_metadata_text.clone())
+                    .block(Block::default()
+                        .title(Span::styled(
+                            "Metadata",
+                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                        ))
+                        .borders(Borders::ALL)
+                        .border_style(mid_border_style)
+                        .title_alignment(Alignment::Center)
+                    )
+                    .wrap(Wrap { trim: true })
+                    .scroll((mid_scroll, 0));
                 f.render_widget(metadata_paragraph, chunks[1]);
 
                 // Right: Use image_panel module to render the right panel
                 let file_name = files.get(selected).map(|s| s.as_str()).unwrap_or("");
+                // Center the title for the image preview panel as well
+                let image_panel_block = Block::default()
+                    .title(Span::styled(
+                        "Image Preview",
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                    ))
+                    .borders(Borders::ALL)
+                    .title_alignment(Alignment::Center);
+                f.render_widget(image_panel_block, chunks[2]);
                 render_image_panel(f, chunks[2], file_name);
             })?;
 
@@ -135,18 +196,47 @@ impl RatatuiUI {
                 if let Ok(Ok(Event::Key(key))) = read_res {
                     match key.code {
                         KeyCode::Char('q') => running = false,
-                        KeyCode::Down => {
+                        // Panel focus switching
+                        KeyCode::Right | KeyCode::Char('l') => {
+                            focused_panel = match focused_panel {
+                                FocusedPanel::Left => FocusedPanel::Middle,
+                                FocusedPanel::Middle => FocusedPanel::Left,
+                            };
+                        }
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            focused_panel = match focused_panel {
+                                FocusedPanel::Left => FocusedPanel::Middle,
+                                FocusedPanel::Middle => FocusedPanel::Left,
+                            };
+                        }
+                        // Only allow up/down navigation when left panel is focused
+                        KeyCode::Down if focused_panel == FocusedPanel::Left => {
                             if !files.is_empty() {
                                 selected = (selected + 1) % files.len();
                             }
                         }
-                        KeyCode::Up => {
+                        KeyCode::Up if focused_panel == FocusedPanel::Left => {
                             if !files.is_empty() {
                                 if selected == 0 {
                                     selected = files.len() - 1;
                                 } else {
                                     selected -= 1;
                                 }
+                            }
+                        }
+                        // Scroll metadata when middle panel is focused
+                        KeyCode::Down if focused_panel == FocusedPanel::Middle => {
+                            // Estimate number of lines in metadata
+                            let total_lines = cached_metadata_text.lines().count() as u16;
+                            // 2 for borders, 2 for title/margin, 1 for safety
+                            let max_scroll = total_lines.saturating_sub(5);
+                            if mid_scroll < max_scroll {
+                                mid_scroll += 1;
+                            }
+                        }
+                        KeyCode::Up if focused_panel == FocusedPanel::Middle => {
+                            if mid_scroll > 0 {
+                                mid_scroll -= 1;
                             }
                         }
                         _ => {}
