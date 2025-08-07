@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
 use anyhow::{Context, Result};
 use exif;
-
+use crate::ui::image_utils::{RED_KEYS, YELLOW_KEYS, GREEN_KEYS};
 
 pub struct MetadataHandler;
 
@@ -58,13 +58,15 @@ impl MetadataHandler {
         let mut metadata = HashMap::new();
         // EXIF
         if let Ok(exif_data) = self.extract_exif_metadata(path) {
-            metadata.extend(exif_data);
+            for (k, v) in exif_data {
+                metadata.entry(k).or_insert(v);
+            }
         }
         // File info
         if let Ok(file_metadata) = std::fs::metadata(path) {
-            metadata.insert("File Size".to_string(), format!("{} bytes", file_metadata.len()));
+            metadata.entry("File Size".to_string()).or_insert(format!("{} bytes", file_metadata.len()));
             if let Ok(modified) = file_metadata.modified() {
-                metadata.insert("Modified".to_string(), format!("{:?}", modified));
+                metadata.entry("Modified".to_string()).or_insert(format!("{:?}", modified));
             }
         }
         // Dimensions
@@ -72,7 +74,7 @@ impl MetadataHandler {
             let width = meta.get_pixel_width();
             let height = meta.get_pixel_height();
             if width > 0 && height > 0 {
-                metadata.insert("Dimensions".to_string(), format!("{}x{}", width, height));
+                metadata.entry("Dimensions".to_string()).or_insert(format!("{}x{}", width, height));
             }
         }
         Ok(metadata)
@@ -103,6 +105,9 @@ impl MetadataHandler {
 
     /// Display metadata as a table in stdout
     fn display_table(&self, metadata: &HashMap<String, String>, quiet: bool) -> Result<()> {
+        let red_keys = RED_KEYS;
+        let yellow_keys = YELLOW_KEYS;
+        let green_keys = GREEN_KEYS;
         let has_exif = metadata.keys().any(|k| k != "File Size" && k != "Modified" && k != "Dimensions");
         if !has_exif {
             if !quiet {
@@ -119,23 +124,7 @@ impl MetadataHandler {
             }
             return Ok(());
         }
-        // Sensitivity classification (updated)
-        let red_keys = [
-            "GPSLatitude", "GPSLongitude", "GPSAltitude", "GPSLatitudeRef", "GPSLongitudeRef", "GPSAltitudeRef",
-            "DateTimeOriginal", "DateTimeDigitized", "DateTime", "OffsetTime", "OffsetTimeOriginal", "Modified",
-            "ImageUniqueID"
-        ];
-        let yellow_keys = [
-            "Make", "Model", "Software", "SceneCaptureType", "DigitalZoomRatio", "FNumber", "ExposureBiasValue",
-            "ExposureMode", "MeteringMode", "ShutterSpeedValue", "ExposureTime", "WhiteBalance", "ApertureValue",
-            "FocalLength", "FocalLengthIn35mmFilm", "PhotographicSensitivity", "Flash", "ExposureProgram", "ExifVersion",
-            "MaxApertureValue"
-        ];
-        let green_keys = [
-            "PixelXDimension", "PixelYDimension", "ImageWidth", "ImageLength", "Dimensions", "Compression", "ColorSpace",
-            "XResolution", "YResolution", "ResolutionUnit", "YCbCrPositioning", "JPEGInterchangeFormat", 
-            "JPEGInterchangeFormatLength", "File Size", "Orientation"
-        ];
+
         if !quiet {
             // First, count types
             let mut count_red = 0;
@@ -168,14 +157,42 @@ impl MetadataHandler {
             println!("📋 Image Metadata:");
             for (key, value) in metadata {
                 let color = if red_keys.contains(&key.as_str()) {
-                    "\x1b[31m" // Red
+                    "\x1b[31m"
                 } else if yellow_keys.contains(&key.as_str()) {
-                    "\x1b[33m" // Yellow
+                    "\x1b[33m"
                 } else if green_keys.contains(&key.as_str()) {
-                    "\x1b[32m" // Green
+                    "\x1b[32m"
                 } else {
-                    "\x1b[0m" // Default
+                    "\x1b[0m"
                 };
+
+                // Try to pretty-print JSON objects as sub-tags, even if value is a quoted JSON string
+                let trimmed = value.trim();
+                let try_json = if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() > 2 {
+                    // Remove surrounding quotes and unescape
+                    let unquoted = &trimmed[1..trimmed.len()-1];
+                    let unescaped = unquoted.replace("\\\"", "\"");
+                    serde_json::from_str::<serde_json::Value>(&unescaped).ok()
+                } else if trimmed.starts_with('{') && trimmed.ends_with('}') {
+                    serde_json::from_str::<serde_json::Value>(trimmed).ok()
+                } else {
+                    None
+                };
+
+                if let Some(json) = try_json {
+                    if let Some(obj) = json.as_object() {
+                        println!("{}{}:\x1b[0m", color, key);
+                        for (subkey, subval) in obj {
+                            println!("  {}{}: {}\x1b[0m", color, subkey, subval);
+                        }
+                        continue;
+                    }
+                    // fallback: pretty print the whole JSON
+                    let pretty = serde_json::to_string_pretty(&json).unwrap_or_else(|_| value.clone());
+                    println!("{}{}: {}\x1b[0m", color, key, pretty);
+                    continue;
+                }
+
                 println!("{}{}: {}\x1b[0m", color, key, value);
             }
             println!("{}", "─".repeat(60));
