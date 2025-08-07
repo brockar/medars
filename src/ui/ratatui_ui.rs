@@ -257,12 +257,12 @@ impl RatatuiUI {
                             };
                         }
                         // Only allow up/down navigation when left panel is focused
-                        KeyCode::Down if focused_panel == FocusedPanel::Left => {
+                        KeyCode::Down | KeyCode::Char('j') if focused_panel == FocusedPanel::Left => {
                             if !files.is_empty() {
                                 selected = (selected + 1) % files.len();
                             }
                         }
-                        KeyCode::Up if focused_panel == FocusedPanel::Left => {
+                        KeyCode::Up | KeyCode::Char('k') if focused_panel == FocusedPanel::Left => {
                             if !files.is_empty() {
                                 if selected == 0 {
                                     selected = files.len() - 1;
@@ -272,13 +272,13 @@ impl RatatuiUI {
                             }
                         }
                     // Scroll metadata when middle panel is focused
-                    KeyCode::Down if focused_panel == FocusedPanel::Middle => {
+                    KeyCode::Down | KeyCode::Char('j') if focused_panel == FocusedPanel::Middle => {
                         // Use max_scroll calculated above
                         if mid_scroll < max_scroll {
                             mid_scroll += 1;
                         }
                     }
-                    KeyCode::Up if focused_panel == FocusedPanel::Middle => {
+                    KeyCode::Up | KeyCode::Char('k') if focused_panel == FocusedPanel::Middle => {
                         if mid_scroll > 0 {
                             mid_scroll -= 1;
                         }
