@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
 use anyhow::{Context, Result};
 use exif;
-
+use crate::ui::image_utils::{RED_KEYS, YELLOW_KEYS, GREEN_KEYS};
 
 pub struct MetadataHandler;
 
@@ -105,6 +105,9 @@ impl MetadataHandler {
 
     /// Display metadata as a table in stdout
     fn display_table(&self, metadata: &HashMap<String, String>, quiet: bool) -> Result<()> {
+        let red_keys = RED_KEYS;
+        let yellow_keys = YELLOW_KEYS;
+        let green_keys = GREEN_KEYS;
         let has_exif = metadata.keys().any(|k| k != "File Size" && k != "Modified" && k != "Dimensions");
         if !has_exif {
             if !quiet {
@@ -121,27 +124,7 @@ impl MetadataHandler {
             }
             return Ok(());
         }
-        // Sensitivity classification 
-        let red_keys = [
-            "GPSLatitude", "GPSLongitude", "GPSAltitude", "GPSLatitudeRef", "GPSLongitudeRef", "GPSAltitudeRef",
-            "DateTimeOriginal", "DateTimeDigitized", "DateTime", "OffsetTime", "OffsetTimeOriginal", "OffsetTimeDigitized", 
-            "Modified", "GPSTimeStamp", "GPSSpeedRef","GPSDateStamp", "GPSProcessingMethod", "GPSSpeed", "GPSTrack", "GPSImgDirection", 
-            "ImageUniqueID", "SubSecTime", "SubSecTimeDigitized", "SubSecTimeOriginal", "ExposureIndex", "LensModel",
-        ];
-        let yellow_keys = [
-            "Make", "Model", "Software", "SceneCaptureType", "DigitalZoomRatio", "FNumber", "ExposureBiasValue",
-            "ExposureMode", "MeteringMode", "ShutterSpeedValue", "ExposureTime", "WhiteBalance", "ApertureValue",
-            "FocalLength", "FocalLengthIn35mmFilm", "PhotographicSensitivity", "Flash", "ExposureProgram", "ExifVersion",
-            "MaxApertureValue", "SceneType", "BrightnessValue", "SensingMethod", "ComponentsConfiguration", 
-            "LightSource", "FlashpixVersion", "InteroperabilityIndex", "InteroperabilityVersion", 
-            "Tag(Exif, 34953)", "Tag(Exif, 42593)", "Tag(Exif, 34965)", "Tag(Tiff, 39424)", "Tag(Exif, 39321)", 
-            "Tag(Tiff, 34970)", "Tag(Tiff, 34979)", "Tag(Exif, 34974)", "Tag(Exif, 39424)", "Tag(Tiff, 39321)"
-        ];
-        let green_keys = [
-            "PixelXDimension", "PixelYDimension", "ImageWidth", "ImageLength", "Dimensions", "Compression", "ColorSpace",
-            "XResolution", "YResolution", "ResolutionUnit", "YCbCrPositioning", "JPEGInterchangeFormat", 
-            "JPEGInterchangeFormatLength", "File Size", "Orientation"
-        ];
+
         if !quiet {
             // First, count types
             let mut count_red = 0;
