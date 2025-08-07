@@ -116,7 +116,31 @@ impl RatatuiUI {
             }
 
 
+            // Calculate visible height for metadata panel (minus borders and title)
+            let mut visible_height = 0u16;
+            let mut max_scroll = 0u16;
+            let mut total_lines = 0u16;
             terminal.draw(|f| {
+                let area = f.area();
+                let chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .margin(1)
+                    .constraints([
+                        Constraint::Percentage(25), // File browser
+                        Constraint::Percentage(40), // Metadata
+                        Constraint::Percentage(35), // Image preview
+                    ])
+                    .split(area);
+
+                // Count display lines, including wrapped/multiline JSON
+                let count_display_lines = |text: &str| -> u16 {
+                    text.lines().map(|l| {
+                        // Estimate wrapping: use panel width
+                        let width =  (chunks[1].width as usize).max(40);
+                        let len = l.chars().count();
+                        ((len + width - 1) / width).max(1) as u16
+                    }).sum()
+                };
                 let area = f.area();
                 let chunks = Layout::default()
                     .direction(Direction::Horizontal)
@@ -145,7 +169,8 @@ impl RatatuiUI {
                 .block(Block::default()
                     .title(Span::styled(
                         "Files",
-                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                        (if focused_panel == FocusedPanel::Left { Style::default().fg(Color::LightBlue) } else { Style::default().fg(Color::White) })
+                            .add_modifier(Modifier::BOLD)
                     ))
                     .borders(Borders::ALL)
                     .border_style(left_border_style)
@@ -160,29 +185,51 @@ impl RatatuiUI {
                 } else {
                     Style::default()
                 };
-                let metadata_paragraph = Paragraph::new(cached_metadata_text.clone())
-                    .block(Block::default()
-                        .title(Span::styled(
-                            "Metadata",
-                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
-                        ))
-                        .borders(Borders::ALL)
-                        .border_style(mid_border_style)
-                        .title_alignment(Alignment::Center)
-                    )
-                    .wrap(Wrap { trim: true })
-                    .scroll((mid_scroll, 0));
-                f.render_widget(metadata_paragraph, chunks[1]);
+                let metadata_title_style = if focused_panel == FocusedPanel::Middle {
+                    Style::default().fg(Color::LightBlue)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+                // Always render a blank line at the end for clarity
+                let mut metadata_with_blank = cached_metadata_text.clone();
+                if !metadata_with_blank.ends_with('\n') {
+                    metadata_with_blank.push('\n');
+                }
+                let metadata_for_render = metadata_with_blank.clone();
+                let metadata_for_count = metadata_with_blank.clone();
+                f.render_widget(
+                    Paragraph::new(metadata_for_render)
+                        .block(Block::default()
+                            .title(Span::styled(
+                                "Metadata",
+                                metadata_title_style.add_modifier(Modifier::BOLD)
+                            ))
+                            .borders(Borders::ALL)
+                            .border_style(mid_border_style)
+                            .title_alignment(Alignment::Center)
+                        )
+                        .wrap(Wrap { trim: true })
+                        .scroll((mid_scroll, 0)),
+                    chunks[1],
+                );
+
+                // Calculate visible height for metadata panel (minus borders and title)
+                visible_height = chunks[1].height.saturating_sub(2); // 1 for top border/title, 1 for bottom border
+                total_lines = count_display_lines(&metadata_for_count);
+                max_scroll = total_lines.saturating_sub(visible_height);
 
                 // Right: Use image_panel module to render the right panel
                 let file_name = files.get(selected).map(|s| s.as_str()).unwrap_or("");
-                // Center the title for the image preview panel as well
+                let right_panel_focused = focused_panel != FocusedPanel::Left && focused_panel != FocusedPanel::Middle;
+                let image_panel_title_style = if !right_panel_focused {
+                    Style::default().fg(Color::White)
+                } else {
+                    Style::default().fg(Color::LightBlue)
+                };
                 let image_panel_block = Block::default()
                     .title(Span::styled(
                         "Image Preview",
-                        Style::default()
-                            .fg(Color::White)
-                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                        image_panel_title_style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
                     ))
                     .borders(Borders::ALL)
                     .title_alignment(Alignment::Center);
@@ -224,21 +271,18 @@ impl RatatuiUI {
                                 }
                             }
                         }
-                        // Scroll metadata when middle panel is focused
-                        KeyCode::Down if focused_panel == FocusedPanel::Middle => {
-                            // Estimate number of lines in metadata
-                            let total_lines = cached_metadata_text.lines().count() as u16;
-                            // 2 for borders, 2 for title/margin, 1 for safety
-                            let max_scroll = total_lines.saturating_sub(5);
-                            if mid_scroll < max_scroll {
-                                mid_scroll += 1;
-                            }
+                    // Scroll metadata when middle panel is focused
+                    KeyCode::Down if focused_panel == FocusedPanel::Middle => {
+                        // Use max_scroll calculated above
+                        if mid_scroll < max_scroll {
+                            mid_scroll += 1;
                         }
-                        KeyCode::Up if focused_panel == FocusedPanel::Middle => {
-                            if mid_scroll > 0 {
-                                mid_scroll -= 1;
-                            }
+                    }
+                    KeyCode::Up if focused_panel == FocusedPanel::Middle => {
+                        if mid_scroll > 0 {
+                            mid_scroll -= 1;
                         }
+                    }
                         _ => {}
                     }
                 }

@@ -103,7 +103,34 @@ impl ImageUtils {
             } else {
                 "⚪"
             };
-            result.push_str(&format!("{} {}: {}\n", category, key, value));
+            // Try to pretty-print JSON values, else truncate long lines
+            let pretty_value = if value.trim_start().starts_with('{') || value.trim_start().starts_with('[') {
+                match serde_json::from_str::<serde_json::Value>(value) {
+                    Ok(json) => {
+                        let pretty = serde_json::to_string_pretty(&json).unwrap_or_else(|_| value.clone());
+                        // Indent each line for TUI
+                        pretty.lines().map(|l| format!("    {}", l)).collect::<Vec<_>>().join("\n")
+                    },
+                    Err(_) => {
+                        // Not valid JSON, fallback to truncation
+                        if value.len() > 120 {
+                            format!("{}...", &value[..120])
+                        } else {
+                            value.clone()
+                        }
+                    }
+                }
+            } else if value.len() > 120 {
+                format!("{}...", &value[..120])
+            } else {
+                value.clone()
+            };
+            // If pretty_value contains newlines, print key on first line, value on next lines
+            if pretty_value.contains('\n') {
+                result.push_str(&format!("{} {}:\n{}\n", category, key, pretty_value));
+            } else {
+                result.push_str(&format!("{} {}: {}\n", category, key, pretty_value));
+            }
         }
         result.push_str(&"─".repeat(40));
         result
