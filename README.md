@@ -25,11 +25,17 @@ MEDARS helps protect your privacy by:
 This project requires the `gexiv2` library and its development headers.
 
 On Ubuntu/Debian:
-    sudo apt install libgexiv2-dev
-On Arch:
-    yay -S libgexiv2
 
-If you see an error about `gexiv2.pc` or `gexiv2` not found, make sure the library is installed and `PKG_CONFIG_PATH` is set correctly.
+```bash
+sudo apt install libgexiv2-dev
+```
+
+On Arch:
+```bash
+yay -S libgexiv2
+```
+
+If you see an error about `gexiv2.pc` or `gexiv2` not found, make sure the library is installed.
 
 ## Contributing
 
