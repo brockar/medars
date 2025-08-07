@@ -4,6 +4,8 @@ mod metadata;
 use metadata::MetadataHandler;
 mod ui;
 use ui::RatatuiUI;
+mod logger;
+use logger::{Logger, LogEntry};
 
 #[derive(Parser)]
 #[command(name = "medars")]
@@ -29,15 +31,15 @@ enum Commands {
         file: PathBuf,
     },
     /// View metadata in a readable format
-    View {
+    Show {
         #[arg(value_name = "FILE")]
         file: PathBuf,
         /// Output format (json, table)
         #[arg(short, long, default_value = "table")]
         format: String,
     },
-    /// Remove metadata from an image
-    Remove {
+    /// Clean metadata from an image
+    Clean {
         #[arg(value_name = "FILE")]
         file: PathBuf,
         /// Output file path (if not specified, overwrites original)
@@ -46,13 +48,20 @@ enum Commands {
         /// Copy to new file (optional path, or auto-name if not provided)
         #[arg(long, value_name = "COPY_PATH")]
         copy: Option<Option<PathBuf>>,
-        /// Dry run: show what would be removed, but do not modify the file
+        /// Show what would be removed, but do not modify the file
         #[arg(long)]
         dry_run: bool,
     },
 
+    /// Show recent log entries
+    Log {
+        /// Maximum number of entries to show
+        #[arg(short, long)]
+        max: Option<usize>,
+    },
+
     /// Launch interactive mode (TUI)
-    Interactive {
+    Tui {
         #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
     },
@@ -62,10 +71,11 @@ enum Commands {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let logger = Logger::new();
 
     // If a subcommand is provided, handle as usual
     if let Some(command) = &cli.command {
-        if let Commands::Interactive { file } = command {
+        if let Commands::Tui { file } = command {
             let mut ui = RatatuiUI::new();
             if !cli.quiet {
                 ui.run(file.clone()).await?;
@@ -87,14 +97,14 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            Commands::View { file, format } => {
+            Commands::Show { file, format } => {
                 let handler = MetadataHandler::new();
                 if let Err(e) = handler.display_metadata(&file, &format, cli.quiet) {
                     log::error!("Error: {}", e);
                     eprintln!("Error: {}", e);
                 }
             }
-            Commands::Remove { file, output, copy, dry_run } => {
+            Commands::Clean { file, output, copy, dry_run } => {
                 let handler = MetadataHandler::new();
                 if *dry_run {
                     // Show what would be removed (list all metadata keys)
@@ -143,6 +153,14 @@ async fn main() -> anyhow::Result<()> {
                         if let Err(e) = std::fs::create_dir_all(parent) {
                             log::error!("Failed to create output directory {}: {}", parent.display(), e);
                             eprintln!("Failed to create output directory {}: {}", parent.display(), e);
+                            // Log failure
+                            logger.log(&LogEntry {
+                                timestamp: chrono::Utc::now(),
+                                action: "remove".to_string(),
+                                file: file.display().to_string(),
+                                result: "failure".to_string(),
+                                details: Some(format!("Failed to create output directory: {}", e)),
+                            });
                             return Err(e.into());
                         }
                     }
@@ -153,10 +171,44 @@ async fn main() -> anyhow::Result<()> {
                         std::fs::copy(&file, &output_path)?;
                     }
                 }
-                handler.remove_metadata(&file, &output_path)?;
-                if !cli.quiet {
-                    log::info!("✅ Metadata removed successfully, saved on: {}", output_path.display());
-                    println!("✅ Metadata removed successfully, saved on: {}", output_path.display());
+                match handler.remove_metadata(&file, &output_path) {
+                    Ok(_) => {
+                        if !cli.quiet {
+                            log::info!("✅ Metadata removed successfully, saved on: {}", output_path.display());
+                            println!("✅ Metadata removed successfully, saved on: {}", output_path.display());
+                        }
+                        logger.log(&LogEntry {
+                            timestamp: chrono::Utc::now(),
+                            action: "clean".to_string(),
+                            file: file.display().to_string(),
+                            result: "success".to_string(),
+                            details: Some(format!("Saved on: {}", output_path.display())),
+                        });
+                    }
+                    Err(e) => {
+                        if !cli.quiet {
+                            log::error!("Failed to remove metadata: {}", e);
+                            eprintln!("Failed to remove metadata: {}", e);
+                        }
+                        logger.log(&LogEntry {
+                            timestamp: chrono::Utc::now(),
+                            action: "clean".to_string(),
+                            file: file.display().to_string(),
+                            result: "failure".to_string(),
+                            details: Some(format!("Error: {}", e)),
+                        });
+                        return Err(e);
+                    }
+                }
+            }
+            Commands::Log { max } => {
+                let entries = logger.read_logs(*max);
+                if entries.is_empty() {
+                    println!("No log entries found.");
+                } else {
+                    for entry in entries {
+                        println!("[{}] {} {} {} {}", entry.timestamp, entry.action, entry.file, entry.result, entry.details.unwrap_or_default());
+                    }
                 }
             }
             _ => {}
