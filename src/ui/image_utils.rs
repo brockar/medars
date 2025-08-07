@@ -46,16 +46,21 @@ impl ImageUtils {
             }
             return result;
         }
+        // Sensitivity classification 
         let red_keys = [
             "GPSLatitude", "GPSLongitude", "GPSAltitude", "GPSLatitudeRef", "GPSLongitudeRef", "GPSAltitudeRef",
-            "DateTimeOriginal", "DateTimeDigitized", "DateTime", "OffsetTime", "OffsetTimeOriginal", "Modified",
-            "ImageUniqueID"
+            "DateTimeOriginal", "DateTimeDigitized", "DateTime", "OffsetTime", "OffsetTimeOriginal", "OffsetTimeDigitized", 
+            "Modified", "GPSTimeStamp", "GPSSpeedRef","GPSDateStamp", "GPSProcessingMethod", "GPSSpeed", "GPSTrack", "GPSImgDirection", 
+            "ImageUniqueID", "SubSecTime", "SubSecTimeDigitized", "SubSecTimeOriginal", "ExposureIndex", "LensModel",
         ];
         let yellow_keys = [
             "Make", "Model", "Software", "SceneCaptureType", "DigitalZoomRatio", "FNumber", "ExposureBiasValue",
             "ExposureMode", "MeteringMode", "ShutterSpeedValue", "ExposureTime", "WhiteBalance", "ApertureValue",
             "FocalLength", "FocalLengthIn35mmFilm", "PhotographicSensitivity", "Flash", "ExposureProgram", "ExifVersion",
-            "MaxApertureValue"
+            "MaxApertureValue", "SceneType", "BrightnessValue", "SensingMethod", "ComponentsConfiguration", 
+            "LightSource", "FlashpixVersion", "InteroperabilityIndex", "InteroperabilityVersion", 
+            "Tag(Exif, 34953)", "Tag(Exif, 42593)", "Tag(Exif, 34965)", "Tag(Tiff, 39424)", "Tag(Exif, 39321)", 
+            "Tag(Tiff, 34970)", "Tag(Tiff, 34979)", "Tag(Exif, 34974)", "Tag(Exif, 39424)", "Tag(Tiff, 39321)"
         ];
         let green_keys = [
             "PixelXDimension", "PixelYDimension", "ImageWidth", "ImageLength", "Dimensions", "Compression", "ColorSpace",
