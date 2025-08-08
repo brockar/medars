@@ -141,16 +141,6 @@ impl RatatuiUI {
                         ((len + width - 1) / width).max(1) as u16
                     }).sum()
                 };
-                let area = f.area();
-                let chunks = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .margin(1)
-                    .constraints([
-                        Constraint::Percentage(25), // File browser
-                        Constraint::Percentage(40), // Metadata
-                        Constraint::Percentage(35), // Image preview
-                    ])
-                    .split(area);
 
                 // Left: File browser
                 let file_items: Vec<ListItem> = files.iter().enumerate().map(|(i, f)| {
