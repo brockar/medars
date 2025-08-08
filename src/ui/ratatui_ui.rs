@@ -21,12 +21,21 @@ impl RatatuiUI {
     }
 
     pub async fn run(&mut self, file: Option<PathBuf>) -> Result<()> {
-        use ratatui::{prelude::*, widgets::*, layout::{Layout, Constraint, Direction}};
+    use ratatui::{prelude::*, widgets::*, layout::{Layout, Constraint, Direction}};
         use crossterm::{terminal, ExecutableCommand};
         use std::io::stdout;
         use tokio::task;
         use std::fs;
         use crossterm::event::{self, Event, KeyCode};
+
+        // Footer keybindings
+        let footer_keys = vec![
+            ("q", "quit", Color::White),
+            ("d", "delete", Color::LightRed),
+            ("c", "copy", Color::Green),
+            ("space", "select", Color::Cyan),
+            ("h/j/k/l", "nav", Color::White),
+        ];
 
         let mut stdout = stdout();
         terminal::enable_raw_mode()?;
@@ -115,13 +124,21 @@ impl RatatuiUI {
                 mid_scroll = 0;
             }
 
-
             // Calculate visible height for metadata panel (minus borders and title)
             let mut visible_height = 0u16;
             let mut max_scroll = 0u16;
             let mut total_lines = 0u16;
             terminal.draw(|f| {
                 let area = f.area();
+                let main_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(0)
+                    .constraints([
+                        Constraint::Min(3), 
+                        Constraint::Length(2), // Footer
+                    ])
+                    .split(area);
+
                 let chunks = Layout::default()
                     .direction(Direction::Horizontal)
                     .margin(1)
@@ -130,7 +147,7 @@ impl RatatuiUI {
                         Constraint::Percentage(40), // Metadata
                         Constraint::Percentage(35), // Image preview
                     ])
-                    .split(area);
+                    .split(main_chunks[0]);
 
                 // Count display lines, including wrapped/multiline JSON
                 let count_display_lines = |text: &str| -> u16 {
@@ -225,6 +242,30 @@ impl RatatuiUI {
                     .title_alignment(Alignment::Center);
                 f.render_widget(image_panel_block, chunks[2]);
                 render_image_panel(f, chunks[2], file_name);
+
+                // Footer: keybindings, styled
+                let mut spans: Vec<Span> = Vec::new();
+                for (i, (key, desc, color)) in footer_keys.iter().enumerate() {
+                    if i > 0 {
+                        spans.push(Span::raw("  "));
+                    }
+                    spans.push(Span::styled(
+                        format!("{}", key),
+                        Style::default().fg(*color).add_modifier(Modifier::BOLD)
+                    ));
+                    spans.push(Span::raw(":"));
+                    spans.push(Span::styled(
+                        format!("{}", desc),
+                        Style::default().fg(Color::White)
+                    ));
+                }
+                let footer = Paragraph::new(Line::from(spans))
+                    .block(Block::default()
+                        .borders(Borders::TOP)
+                        .border_style(Style::default().fg(Color::Gray))
+                    )
+                    .alignment(Alignment::Center);
+                f.render_widget(footer, main_chunks[1]);
             })?;
 
             let poll_res = task::spawn_blocking(|| event::poll(std::time::Duration::from_millis(200))).await;
