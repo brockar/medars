@@ -1,36 +1,32 @@
-#[derive(Copy, Clone, PartialEq)]
-enum FocusedPanel {
-    Left,
-    Middle,
-}
 use std::path::PathBuf;
 use anyhow::Result;
+use crate::ui::app::{App, FocusedPanel};
 use crate::ui::image_panel::render_image_panel;
-use crate::ui::image_utils::ImageUtils;
 
 pub struct RatatuiUI {
-    image_utils: ImageUtils,
+    app: App,
 }
-
 
 impl RatatuiUI {
     pub fn new() -> Self {
         RatatuiUI {
-            image_utils: ImageUtils::new(),
+            app: App::new(),
         }
     }
 
     pub async fn run(&mut self, file: Option<PathBuf>) -> Result<()> {
-    use ratatui::{prelude::*, widgets::*, layout::{Layout, Constraint, Direction}};
+        use ratatui::{prelude::*, widgets::*, layout::{Layout, Constraint, Direction}};
         use crossterm::{terminal, ExecutableCommand};
         use std::io::stdout;
         use tokio::task;
-        use std::fs;
         use crossterm::event::{self, Event, KeyCode};
+        use std::time::{Duration, Instant};
+        use tokio::time::sleep;
 
         // Footer keybindings
         let footer_keys = vec![
             ("q", "quit", Color::White),
+            ("r", "retry", Color::Yellow),
             ("d", "delete", Color::LightRed),
             ("c", "copy", Color::Green),
             ("space", "select", Color::Cyan),
@@ -91,7 +87,7 @@ impl RatatuiUI {
             Some(p) => p.parent().unwrap_or(std::path::Path::new(".")),
             None => std::path::Path::new("."),
         };
-        let files: Vec<String> = match fs::read_dir(dir) {
+        self.app.files = match std::fs::read_dir(dir) {
             Ok(read_dir) => read_dir.filter_map(|e| {
                 let e = e.ok()?;
                 let path = e.path();
@@ -104,25 +100,15 @@ impl RatatuiUI {
             Err(_) => vec![],
         };
 
-        let mut selected = 0;
-        let mut previous_selected = usize::MAX; // Force initial load
-        let mut cached_metadata_text = String::new();
-        let mut focused_panel = FocusedPanel::Left;
-        let mut mid_scroll: u16 = 0;
-
-        while running {
+        while self.app.running {
+            // Process any completed background image loads
+            self.app.process_image_load_events();
+            
             // Update metadata cache only when selection changes
-            if selected != previous_selected {
-                if !files.is_empty() {
-                    let selected_file = &files[selected];
-                    let file_path = dir.join(selected_file);
-                    cached_metadata_text = self.image_utils.get_metadata_for_display(selected_file, &file_path);
-                } else {
-                    cached_metadata_text = "No files found".to_string();
-                }
-                previous_selected = selected;
-                mid_scroll = 0;
-            }
+            self.app.update_selection(dir);
+            
+            // Preload nearby images for smoother navigation
+            self.app.preload_nearby_images(dir);
 
             // Calculate visible height for metadata panel (minus borders and title)
             let mut visible_height = 0u16;
@@ -160,14 +146,14 @@ impl RatatuiUI {
                 };
 
                 // Left: File browser
-                let file_items: Vec<ListItem> = files.iter().enumerate().map(|(i, f)| {
-                    if i == selected {
+                let file_items: Vec<ListItem> = self.app.files.iter().enumerate().map(|(i, f)| {
+                    if i == self.app.selected {
                         ListItem::new(format!("> {} <", f)).style(Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))
                     } else {
                         ListItem::new(f.to_string())
                     }
                 }).collect();
-                let left_border_style = if focused_panel == FocusedPanel::Left {
+                let left_border_style = if self.app.focused_panel == FocusedPanel::Left {
                     Style::default().fg(Color::LightBlue)
                 } else {
                     Style::default()
@@ -176,7 +162,7 @@ impl RatatuiUI {
                 .block(Block::default()
                     .title(Span::styled(
                         "Files",
-                        (if focused_panel == FocusedPanel::Left { Style::default().fg(Color::LightBlue) } else { Style::default().fg(Color::White) })
+                        (if self.app.focused_panel == FocusedPanel::Left { Style::default().fg(Color::LightBlue) } else { Style::default().fg(Color::White) })
                             .add_modifier(Modifier::BOLD)
                     ))
                     .borders(Borders::ALL)
@@ -187,18 +173,18 @@ impl RatatuiUI {
                 f.render_widget(file_list, chunks[0]);
 
                 // Middle: Metadata (cached to avoid re-reading every frame)
-                let mid_border_style = if focused_panel == FocusedPanel::Middle {
+                let mid_border_style = if self.app.focused_panel == FocusedPanel::Middle {
                     Style::default().fg(Color::LightBlue)
                 } else {
                     Style::default()
                 };
-                let metadata_title_style = if focused_panel == FocusedPanel::Middle {
+                let metadata_title_style = if self.app.focused_panel == FocusedPanel::Middle {
                     Style::default().fg(Color::LightBlue)
                 } else {
                     Style::default().fg(Color::White)
                 };
                 // Always render a blank line at the end for clarity
-                let mut metadata_with_blank = cached_metadata_text.clone();
+                let mut metadata_with_blank = self.app.cached_metadata_text.clone();
                 if !metadata_with_blank.ends_with('\n') {
                     metadata_with_blank.push('\n');
                 }
@@ -216,7 +202,7 @@ impl RatatuiUI {
                             .title_alignment(Alignment::Center)
                         )
                         .wrap(Wrap { trim: true })
-                        .scroll((mid_scroll, 0)),
+                        .scroll((self.app.mid_scroll, 0)),
                     chunks[1],
                 );
 
@@ -226,8 +212,8 @@ impl RatatuiUI {
                 max_scroll = total_lines.saturating_sub(visible_height);
 
                 // Right: Use image_panel module to render the right panel
-                let file_name = files.get(selected).map(|s| s.as_str()).unwrap_or("");
-                let right_panel_focused = focused_panel != FocusedPanel::Left && focused_panel != FocusedPanel::Middle;
+                let file_name = self.app.files.get(self.app.selected).map(|s| s.as_str()).unwrap_or("");
+                let right_panel_focused = self.app.focused_panel != FocusedPanel::Left && self.app.focused_panel != FocusedPanel::Middle;
                 let image_panel_title_style = if !right_panel_focused {
                     Style::default().fg(Color::White)
                 } else {
@@ -241,7 +227,9 @@ impl RatatuiUI {
                     .borders(Borders::ALL)
                     .title_alignment(Alignment::Center);
                 f.render_widget(image_panel_block, chunks[2]);
-                render_image_panel(f, chunks[2], file_name);
+                let load_status = self.app.get_image_load_status();
+                let current_file_path = self.app.image_path.as_deref();
+                render_image_panel(f, chunks[2], file_name, self.app.image_state.as_mut(), load_status, current_file_path);
 
                 // Footer: keybindings, styled
                 let mut spans: Vec<Span> = Vec::new();
@@ -268,54 +256,27 @@ impl RatatuiUI {
                 f.render_widget(footer, main_chunks[1]);
             })?;
 
+            // Frame rate limiting - only redraw if enough time has passed
+            let now = Instant::now();
+            let frame_time = Duration::from_millis(33);
+            if now.duration_since(self.app.last_frame_time) < frame_time {
+                sleep(frame_time - now.duration_since(self.app.last_frame_time)).await;
+            }
+            self.app.last_frame_time = Instant::now();
+
             let poll_res = task::spawn_blocking(|| event::poll(std::time::Duration::from_millis(200))).await;
             if let Ok(Ok(true)) = poll_res {
                 let read_res = task::spawn_blocking(|| event::read()).await;
                 if let Ok(Ok(Event::Key(key))) = read_res {
-                    match key.code {
-                        KeyCode::Char('q') => running = false,
-                        // Panel focus switching
-                        KeyCode::Right | KeyCode::Char('l') => {
-                            focused_panel = match focused_panel {
-                                FocusedPanel::Left => FocusedPanel::Middle,
-                                FocusedPanel::Middle => FocusedPanel::Left,
-                            };
-                        }
-                        KeyCode::Left | KeyCode::Char('h') => {
-                            focused_panel = match focused_panel {
-                                FocusedPanel::Left => FocusedPanel::Middle,
-                                FocusedPanel::Middle => FocusedPanel::Left,
-                            };
-                        }
-                        // Only allow up/down navigation when left panel is focused
-                        KeyCode::Down | KeyCode::Char('j') if focused_panel == FocusedPanel::Left => {
-                            if !files.is_empty() {
-                                selected = (selected + 1) % files.len();
+                    // Handle scroll bounds for metadata panel
+                    if key.code == crossterm::event::KeyCode::Down || key.code == crossterm::event::KeyCode::Char('j') {
+                        if self.app.focused_panel == FocusedPanel::Middle {
+                            if self.app.mid_scroll < max_scroll {
+                                self.app.mid_scroll += 1;
                             }
                         }
-                        KeyCode::Up | KeyCode::Char('k') if focused_panel == FocusedPanel::Left => {
-                            if !files.is_empty() {
-                                if selected == 0 {
-                                    selected = files.len() - 1;
-                                } else {
-                                    selected -= 1;
-                                }
-                            }
-                        }
-                    // Scroll metadata when middle panel is focused
-                    KeyCode::Down | KeyCode::Char('j') if focused_panel == FocusedPanel::Middle => {
-                        // Use max_scroll calculated above
-                        if mid_scroll < max_scroll {
-                            mid_scroll += 1;
-                        }
                     }
-                    KeyCode::Up | KeyCode::Char('k') if focused_panel == FocusedPanel::Middle => {
-                        if mid_scroll > 0 {
-                            mid_scroll -= 1;
-                        }
-                    }
-                        _ => {}
-                    }
+                    self.app.handle_input(key.code, max_scroll, dir);
                 }
             }
         }
