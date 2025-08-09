@@ -1,4 +1,5 @@
 use crate::ui::image_utils::ImageUtils;
+use crate::ui::fast_image_loader::FastImageLoader;
 use ratatui_image::protocol::StatefulProtocol;
 use ratatui_image::picker::Picker;
 use tokio::sync::mpsc;
@@ -6,13 +7,31 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 /// Load an image file and create a StatefulProtocol for ratatui_image
-fn load_image_protocol_sync(file_path: &std::path::Path, picker: &Picker) -> Result<StatefulProtocol, Box<dyn std::error::Error + Send + Sync>> {
-    // Load the image using the image crate
-    let img = image::open(file_path)?;
-    
-    // Create the protocol using the provided picker
+fn load_image_protocol_sync(
+    file_path: &std::path::Path, 
+    picker: &Picker,
+    terminal_width: Option<u16>,
+    terminal_height: Option<u16>
+) -> Result<StatefulProtocol, Box<dyn std::error::Error + Send + Sync>> {
+    // Load the image using FastImageLoader when possible, otherwise fallback to generic loading
+    let img = if let (Some(width), Some(height)) = (terminal_width, terminal_height) {
+        let (target_width, target_height) = FastImageLoader::get_terminal_display_size(width, height);
+        
+        // Use FastImageLoader with resizing for better performance
+        FastImageLoader::load_image_resized(file_path, target_width, target_height)
+            .or_else(|_| FastImageLoader::load_image(file_path))
+            .or_else(|_| {
+                image::open(file_path).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            })?
+    } else {
+        // Use FastImageLoader without resizing if no terminal size available
+        FastImageLoader::load_image(file_path)
+            .or_else(|_| {
+                image::open(file_path).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            })?
+    };
+
     let protocol = picker.new_resize_protocol(img);
-    
     Ok(protocol)
 }
 
@@ -45,14 +64,20 @@ pub struct App {
     pub focused_panel: FocusedPanel,
     pub mid_scroll: u16,
     pub running: bool,
+
     // Background loading infrastructure
     pub image_load_receiver: mpsc::UnboundedReceiver<ImageLoadEvent>,
     pub image_load_sender: mpsc::UnboundedSender<ImageLoadEvent>,
     pub loading_images: HashSet<String>,
     pub failed_images: HashSet<String>,
     pub last_frame_time: Instant,
+
     // Image picker for loading images
     pub image_picker: Option<Picker>,
+
+    // Terminal dimensions for optimal image loading
+    pub terminal_width: Option<u16>,
+    pub terminal_height: Option<u16>,
 }
 
 impl App {
@@ -60,6 +85,9 @@ impl App {
         let (sender, receiver) = mpsc::unbounded_channel();
         // Try to initialize the image picker once during app creation
         let picker = Picker::from_query_stdio().ok();
+        if picker.is_none() {
+            eprintln!("Note: Image preview not available in this terminal. Use a terminal with image support (Kitty, WezTerm, or Ghostty) for full functionality.");
+        }
         App {
             image_utils: ImageUtils::new(),
             image_state: None,
@@ -77,6 +105,8 @@ impl App {
             failed_images: HashSet::new(), // Start with clean state
             last_frame_time: Instant::now(),
             image_picker: picker,
+            terminal_width: None,
+            terminal_height: None,
         }
     }
 
@@ -85,14 +115,18 @@ impl App {
         while let Ok(event) = self.image_load_receiver.try_recv() {
             match event {
                 ImageLoadEvent::LoadComplete { file_path, protocol } => {
-                    self.loading_images.remove(&file_path);
+                    // Only update image state if this is for the currently selected image
                     if let Some(ref current_path) = self.image_path {
                         if *current_path == file_path {
                             self.image_state = Some(protocol);
                         }
                     }
-                }
-                ImageLoadEvent::LoadError { file_path, error: _ } => {
+                    // Always remove from loading set regardless
+                    self.loading_images.remove(&file_path);
+                },
+
+                ImageLoadEvent::LoadError { file_path, error } => {
+                    eprintln!("Image load error for {}: {}", file_path, error);
                     self.loading_images.remove(&file_path);
                     self.failed_images.insert(file_path);
                 }
@@ -100,9 +134,21 @@ impl App {
         }
     }
 
+    /// Update terminal dimensions for image loading
+    pub fn update_terminal_size(&mut self, width: u16, height: u16) {
+        self.terminal_width = Some(width);
+        self.terminal_height = Some(height);
+    }
+
     /// Update selection and load metadata/image for the selected file
     pub fn update_selection(&mut self, dir: &std::path::Path) {
         if self.selected != self.previous_selected {
+
+            // Clear loading state for previous image to prevent showing wrong image
+            if let Some(ref prev_path) = self.image_path.clone() {
+                self.loading_images.remove(prev_path);
+            }
+            
             if !self.files.is_empty() && self.selected < self.files.len() {
                 let selected_file = &self.files[self.selected];
                 let file_path = dir.join(selected_file);
@@ -117,7 +163,7 @@ impl App {
                 // Clear previous image state
                 self.image_state = None;
                 
-                // Start loading image if it's an image file
+                // Start loading image if it's an image
                 if self.is_image_file(&file_path) {
                     self.start_background_image_load(file_path);
                 }
@@ -164,6 +210,9 @@ impl App {
             
             if !is_image {
                 crate::ui::image_panel::ImageLoadStatus::NotImage
+            } else if self.image_picker.is_none() {
+                // Terminal doesn't support image rendering
+                crate::ui::image_panel::ImageLoadStatus::UnsupportedTerminal
             } else if self.loading_images.contains(current_path) {
                 crate::ui::image_panel::ImageLoadStatus::Loading
             } else if self.failed_images.contains(current_path) {
@@ -179,14 +228,10 @@ impl App {
         }
     }
 
-    /// Handle keyboard input
+    /// Keyboard input
     pub fn handle_input(&mut self, key: crossterm::event::KeyCode, max_scroll: u16, dir: &std::path::Path) {
         match key {
             crossterm::event::KeyCode::Char('q') => self.running = false,
-            // Retry failed image with 'r' key
-            crossterm::event::KeyCode::Char('r') => {
-                self.retry_failed_image(dir);
-            }
             // Panel focus switching
             crossterm::event::KeyCode::Right | crossterm::event::KeyCode::Char('l') => {
                 self.focused_panel = match self.focused_panel {
@@ -226,7 +271,7 @@ impl App {
         }
     }
 
-    /// Check if a file is an image based on its extension
+    /// Check if a file is an image 
     fn is_image_file(&self, path: &std::path::Path) -> bool {
         if let Some(ext) = path.extension() {
             match ext.to_string_lossy().to_lowercase().as_str() {
@@ -259,10 +304,12 @@ impl App {
         
         let sender = self.image_load_sender.clone();
         let picker_clone = picker.clone();
+        let terminal_width = self.terminal_width;
+        let terminal_height = self.terminal_height;
         tokio::spawn(async move {
             // Try to load the image using ratatui_image
             let result = tokio::task::spawn_blocking(move || {
-                load_image_protocol_sync(&file_path, &picker_clone)
+                load_image_protocol_sync(&file_path, &picker_clone, terminal_width, terminal_height)
             }).await;
             
             match result {
@@ -286,18 +333,5 @@ impl App {
                 }
             }
         });
-    }
-
-    /// Clear failure state for an image and retry loading it
-    fn retry_failed_image(&mut self, _dir: &std::path::Path) {
-        if let Some(ref current_path) = self.image_path.clone() {
-            if self.failed_images.contains(current_path) {
-                self.failed_images.remove(current_path);
-                let path = std::path::Path::new(current_path);
-                if self.is_image_file(path) {
-                    self.start_background_image_load(path.to_path_buf());
-                }
-            }
-        }
     }
 }

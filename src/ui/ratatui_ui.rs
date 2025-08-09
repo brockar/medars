@@ -23,10 +23,8 @@ impl RatatuiUI {
         use std::time::{Duration, Instant};
         use tokio::time::sleep;
 
-        // Footer keybindings
         let footer_keys = vec![
             ("q", "quit", Color::White),
-            ("r", "retry", Color::Yellow),
             ("d", "delete", Color::LightRed),
             ("c", "copy", Color::Green),
             ("space", "select", Color::Cyan),
@@ -47,11 +45,12 @@ impl RatatuiUI {
             }
         };
 
-        // Branch: if file is Some and is a file, show image preview; else show file browser
+        // Branch: If its a file or not (Show Image TUI or Folder TUI) 
+        // Single file
         let mut running = true;
         if let Some(ref path) = file {
             if path.is_file() {
-                // Show a centered placeholder text for a single file
+                // Placeholder for a single file
                 while running {
                     terminal.draw(|f| {
                         let area = f.area();
@@ -114,8 +113,14 @@ impl RatatuiUI {
             let mut visible_height = 0u16;
             let mut max_scroll = 0u16;
             let mut total_lines = 0u16;
+            
+            // Update terminal dimensions for image loading
+            let terminal_size = terminal.size()?;
+            self.app.update_terminal_size(terminal_size.width, terminal_size.height);
+            
             terminal.draw(|f| {
                 let area = f.area();
+                
                 let main_chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(0)
@@ -138,7 +143,6 @@ impl RatatuiUI {
                 // Count display lines, including wrapped/multiline JSON
                 let count_display_lines = |text: &str| -> u16 {
                     text.lines().map(|l| {
-                        // Estimate wrapping: use panel width
                         let width =  (chunks[1].width as usize).max(40);
                         let len = l.chars().count();
                         ((len + width - 1) / width).max(1) as u16
@@ -172,7 +176,7 @@ impl RatatuiUI {
                     .highlight_style(Style::default().fg(Color::LightBlue).add_modifier(Modifier::BOLD));
                 f.render_widget(file_list, chunks[0]);
 
-                // Middle: Metadata (cached to avoid re-reading every frame)
+                // Middle: Metadata (cached)
                 let mid_border_style = if self.app.focused_panel == FocusedPanel::Middle {
                     Style::default().fg(Color::LightBlue)
                 } else {
@@ -213,12 +217,7 @@ impl RatatuiUI {
 
                 // Right: Use image_panel module to render the right panel
                 let file_name = self.app.files.get(self.app.selected).map(|s| s.as_str()).unwrap_or("");
-                let right_panel_focused = self.app.focused_panel != FocusedPanel::Left && self.app.focused_panel != FocusedPanel::Middle;
-                let image_panel_title_style = if !right_panel_focused {
-                    Style::default().fg(Color::White)
-                } else {
-                    Style::default().fg(Color::LightBlue)
-                };
+                let image_panel_title_style = Style::default().fg(Color::White);
                 let image_panel_block = Block::default()
                     .title(Span::styled(
                         "Image Preview",
@@ -231,7 +230,7 @@ impl RatatuiUI {
                 let current_file_path = self.app.image_path.as_deref();
                 render_image_panel(f, chunks[2], file_name, self.app.image_state.as_mut(), load_status, current_file_path);
 
-                // Footer: keybindings, styled
+                // Footer: keybindings
                 let mut spans: Vec<Span> = Vec::new();
                 for (i, (key, desc, color)) in footer_keys.iter().enumerate() {
                     if i > 0 {
@@ -256,9 +255,8 @@ impl RatatuiUI {
                 f.render_widget(footer, main_chunks[1]);
             })?;
 
-            // Frame rate limiting - only redraw if enough time has passed
             let now = Instant::now();
-            let frame_time = Duration::from_millis(33);
+            let frame_time = Duration::from_millis(33); // aprox 30 fps
             if now.duration_since(self.app.last_frame_time) < frame_time {
                 sleep(frame_time - now.duration_since(self.app.last_frame_time)).await;
             }
