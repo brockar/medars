@@ -21,29 +21,28 @@ pub fn render_image_panel(
 ) {
     use ratatui::prelude::Alignment;
     
-    // If have an image state
     if let Some(state) = image_state {
-        // Create a smaller area for the image with padding
-        let image_area = Rect {
-            x: area.x + 2,
-            y: area.y + 2,
-            width: area.width.saturating_sub(4),
-            height: area.height.saturating_sub(4),
+        let available_area = Rect {
+            x: area.x + 1,
+            y: area.y + 2, 
+            width: area.width.saturating_sub(2),
+            height: area.height.saturating_sub(3),
         };
         
-        // Use Resize::Fit with a maximum size to keep images smaller
-        let max_width = image_area.width.min(60); // Limit max width
-        let max_height = image_area.height.min(30); // Limit max height
+        let margin_x = 2;
+        let margin_y = 1;
         
-        let constrained_area = Rect {
-            x: image_area.x,
-            y: image_area.y,
-            width: max_width,
-            height: max_height,
+        let centered_area = Rect {
+            x: available_area.x + margin_x,
+            y: available_area.y + margin_y,
+            width: available_area.width.saturating_sub(margin_x * 2),
+            height: available_area.height.saturating_sub(margin_y * 2),
         };
         
+        // Use Resize::Fit which should center the image within the given area
+        // while maintaining aspect ratio
         let widget = StatefulImage::default().resize(Resize::Fit(None));
-        f.render_stateful_widget(widget, constrained_area, state);
+        f.render_stateful_widget(widget, centered_area, state);
         return;
     }
     

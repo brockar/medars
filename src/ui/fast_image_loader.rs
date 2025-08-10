@@ -8,7 +8,6 @@ pub struct FastImageLoader;
 impl FastImageLoader {
     /// Load an image using the fastest available decoder for the format
     pub fn load_image(file_path: &Path) -> Result<DynamicImage> {
-        // Determine format from file extension
         let extension = file_path
             .extension()
             .and_then(|ext| ext.to_str())
@@ -28,12 +27,10 @@ impl FastImageLoader {
         let file = File::open(file_path)?;
         let mut reader = BufReader::new(file);
         
-        // Use jpeg-decoder for faster JPEG decoding
         let mut decoder = jpeg_decoder::Decoder::new(&mut reader);
         let pixels = decoder.decode()?;
         let info = decoder.info().ok_or_else(|| anyhow::anyhow!("Failed to get JPEG info"))?;
         
-        // Convert to DynamicImage based on color type
         let dynamic_image = match info.pixel_format {
             jpeg_decoder::PixelFormat::L8 => {
                 DynamicImage::ImageLuma8(
@@ -48,7 +45,7 @@ impl FastImageLoader {
                 )
             },
             _ => {
-                // Fallback to generic loader for unsupported JPEG formats
+                // Fallback to loader for non JPEG formats
                 return Self::load_generic(file_path);
             }
         };
@@ -64,6 +61,14 @@ impl FastImageLoader {
 
     /// Load image with automatic resizing to target dimensions for faster processing
     pub fn load_image_resized(file_path: &Path, target_width: u32, target_height: u32) -> Result<DynamicImage> {
+        //if let Ok(metadata) = std::fs::metadata(file_path) {
+            //let file_size_mb = metadata.len() / (1024 * 1024);
+            // Skip files larger than 50MB
+            //if file_size_mb > 50 {
+            //    return Err(anyhow::anyhow!("Image file too large: {}MB", file_size_mb));
+            //}
+        //}
+        
         let img = Self::load_image(file_path)?;
         
         // Calculate optimal resize dimensions while maintaining aspect ratio
@@ -85,9 +90,10 @@ impl FastImageLoader {
     
     /// Get estimated terminal display size (in pixels) for optimal resizing
     pub fn get_terminal_display_size(terminal_width: u16, terminal_height: u16) -> (u32, u32) {
-
-        let pixel_width = (terminal_width as u32).saturating_mul(8);
-        let pixel_height = (terminal_height as u32).saturating_mul(16);
-        (pixel_width.min(1200), pixel_height.min(800))
+        // Use better calculations for reference viewing 
+        let pixel_width = (terminal_width as u32).saturating_mul(8);  
+        let pixel_height = (terminal_height as u32).saturating_mul(16); 
+        
+        (pixel_width.min(800), pixel_height.min(600))  
     }
 }
