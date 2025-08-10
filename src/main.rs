@@ -44,15 +44,15 @@ enum Commands {
     /// 
     ///   medars clean image.jpg
     /// 
-    ///   medars clean *.jpg --copy
+    ///   medars clean *.jpg -c
     Clean {
         #[arg(value_name = "FILES", required = true, help = "Image files to clean (supports patterns, e.g. *.jpg for batch mode)")]
         files: Vec<String>,
         /// Output file path (if not specified, overwrites original; only valid for single file)
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Copy to new file (optional path, or auto-name if not provided)
-        #[arg(long, value_name = "COPY_PATH")]
+        /// Copy to new file (optional path, autorename if not provided)
+        #[arg(short = 'c', long, value_name = "COPY_PATH")]
         copy: Option<Option<PathBuf>>,
         /// Show what would be removed, but do not modify the file
         #[arg(long)]
