@@ -78,7 +78,6 @@ impl ImageUtils {
             }
             return result;
         }
-
         let mut count_red = 0;
         let mut count_yellow = 0;
         let mut count_green = 0;
@@ -120,29 +119,37 @@ impl ImageUtils {
             } else {
                 "⚪"
             };
-            // Try to pretty-print JSON values, else truncate long lines
-            let pretty_value = if value.trim_start().starts_with('{') || value.trim_start().starts_with('[') {
-                match serde_json::from_str::<serde_json::Value>(value) {
-                    Ok(json) => {
-                        let pretty = serde_json::to_string_pretty(&json).unwrap_or_else(|_| value.clone());
-                        // Indent each line for TUI
-                        pretty.lines().map(|l| format!("    {}", l)).collect::<Vec<_>>().join("\n")
-                    },
-                    Err(_) => {
-                        // Not valid JSON, fallback to truncation
-                        if value.len() > 120 {
-                            format!("{}...", &value[..120])
-                        } else {
-                            value.clone()
-                        }
-                    }
+
+            // Try to pretty-print JSON values, including double-quoted/escaped JSON strings
+            let trimmed = value.trim();
+            let try_json = if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() > 2 {
+                let unquoted = &trimmed[1..trimmed.len()-1];
+                let unescaped = unquoted.replace("\\\"", "\"");
+                serde_json::from_str::<serde_json::Value>(&unescaped).ok()
+            } else if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                serde_json::from_str::<serde_json::Value>(trimmed).ok()
+            } else {
+                None
+            };
+
+            let pretty_value = if let Some(json) = try_json {
+                // Indent all lines by two spaces for top-level JSON object
+                let pretty = Self::pretty_json_value(&json, 0);
+                if json.is_object() {
+                    pretty
+                        .lines()
+                        .map(|line| format!("---   {}", line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                } else {
+                    pretty
                 }
             } else if value.len() > 120 {
                 format!("{}...", &value[..120])
             } else {
                 value.clone()
             };
-            // If pretty_value contains newlines, print key on first line, value on next lines
+
             if pretty_value.contains('\n') {
                 result.push_str(&format!("{} {}:\n{}\n", category, key, pretty_value));
             } else {
@@ -151,5 +158,44 @@ impl ImageUtils {
         }
         result.push_str(&"─".repeat(40));
         result
+    }
+
+    /// Recursively pretty-print JSON values for TUI
+    fn pretty_json_value(value: &serde_json::Value, indent: usize) -> String {
+    let pad = " ".repeat(indent);
+        match value {
+            serde_json::Value::Object(map) => {
+                let mut s = String::new();
+                for (k, v) in map {
+                    // Indent the sub-key itself
+                    s.push_str(&format!("{}{}: ", pad, k));
+                    let val_str = Self::pretty_json_value(v, indent);
+                    if v.is_object() || v.is_array() {
+                        s.push('\n');
+                        s.push_str(&val_str);
+                        s.push('\n');
+                    } else {
+                        s.push_str(&format!("{}\n", val_str.trim_end()));
+                    }
+                }
+                s.trim_end_matches('\n').to_string()
+            }
+            serde_json::Value::Array(arr) => {
+                let mut s = String::new();
+                for v in arr {
+                    s.push_str(&format!("{}- ", pad));
+                    let val_str = Self::pretty_json_value(v, indent);
+                    if v.is_object() || v.is_array() {
+                        s.push('\n');
+                        s.push_str(&val_str);
+                        s.push('\n');
+                    } else {
+                        s.push_str(&format!("{}\n", val_str.trim_end()));
+                    }
+                }
+                s.trim_end_matches('\n').to_string()
+            }
+            _ => format!("{}{}", pad, value),
+        }
     }
 }
