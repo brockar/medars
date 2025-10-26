@@ -350,6 +350,45 @@ impl App {
         }
     }
 
+    fn collect_files(dir: &std::path::Path) -> Vec<String> {
+        match std::fs::read_dir(dir) {
+            Ok(read_dir) => read_dir
+                .filter_map(|entry| {
+                    let entry = entry.ok()?;
+                    let path = entry.path();
+                    if path.is_file() {
+                        path.file_name().map(|n| n.to_string_lossy().to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    fn refresh_file_list(&mut self, dir: &std::path::Path) {
+        let current_selection = self.files.get(self.selected).cloned();
+        self.files = Self::collect_files(dir);
+
+        if let Some(current) = current_selection {
+            if let Some(idx) = self.files.iter().position(|f| f == &current) {
+                self.selected = idx;
+            } else if !self.files.is_empty() {
+                self.selected = self.files.len().saturating_sub(1);
+            } else {
+                self.selected = 0;
+            }
+        } else if self.files.is_empty() {
+            self.selected = 0;
+        } else if self.selected >= self.files.len() {
+            self.selected = self.files.len().saturating_sub(1);
+        }
+
+        self.previous_selected = usize::MAX;
+        self.image_utils.cached_metadata = None;
+    }
+
     /// Get the loading status for the currently selected image
     pub fn get_image_load_status(&self) -> crate::ui::image_panel::ImageLoadStatus {
         if let Some(ref current_path) = self.image_path {
@@ -444,6 +483,9 @@ impl App {
                         self.selected_files.insert(file.clone());
                     }
                 }
+            }
+            crossterm::event::KeyCode::Char('a') if self.focused_panel == FocusedPanel::Left => {
+                self.select_all_files();
             }
             crossterm::event::KeyCode::Char('d') => {
                 // Delete metadata of selected files (only if files are selected)
@@ -582,6 +624,13 @@ impl App {
         });
     }
 
+    fn select_all_files(&mut self) {
+        if self.files.is_empty() {
+            return;
+        }
+        self.selected_files = self.files.iter().cloned().collect();
+    }
+
     pub fn delete_metadata_of_selected_files(&mut self, dir: &std::path::Path) {
         let handler = MetadataHandler::new();
         let mut cleaned_files = Vec::new();
@@ -669,6 +718,8 @@ impl App {
                 }
             }
         }
+
+        self.refresh_file_list(dir);
 
         let mut message = String::new();
         if !cleaned_files.is_empty() {

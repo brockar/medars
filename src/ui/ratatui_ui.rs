@@ -31,6 +31,7 @@ impl RatatuiUI {
             ("d", "delete", Color::LightRed),
             ("c", "copy", Color::Green),
             ("space", "select", Color::Cyan),
+            ("a", "select all", Color::Cyan),
             ("h/j/k/l", "nav", Color::White),
         ];
 
