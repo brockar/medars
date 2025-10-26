@@ -1,7 +1,7 @@
-use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
+use crate::ui::image_utils::{GREEN_KEYS, RED_KEYS, YELLOW_KEYS};
 use anyhow::{Context, Result};
 use exif;
-use crate::ui::image_utils::{RED_KEYS, YELLOW_KEYS, GREEN_KEYS};
+use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
 
 pub struct MetadataHandler;
 
@@ -13,7 +13,7 @@ impl MetadataHandler {
     pub fn new() -> Self {
         Self
     }
-    
+
     /// Check if an image has any metadata
     pub fn has_metadata(&self, path: &Path) -> Result<bool> {
         if !path.exists() {
@@ -48,7 +48,8 @@ impl MetadataHandler {
         let image = rexiv2::Metadata::new_from_path(input_path)
             .context("Failed to open image with rexiv2")?;
         image.clear();
-        image.save_to_file(output_path)
+        image
+            .save_to_file(output_path)
             .context("Failed to save image without metadata using rexiv2")?;
         Ok(())
     }
@@ -64,9 +65,13 @@ impl MetadataHandler {
         }
         // File info
         if let Ok(file_metadata) = std::fs::metadata(path) {
-            metadata.entry("File Size".to_string()).or_insert(format!("{} bytes", file_metadata.len()));
+            metadata
+                .entry("File Size".to_string())
+                .or_insert(format!("{} bytes", file_metadata.len()));
             if let Ok(modified) = file_metadata.modified() {
-                metadata.entry("Modified".to_string()).or_insert(format!("{:?}", modified));
+                metadata
+                    .entry("Modified".to_string())
+                    .or_insert(format!("{:?}", modified));
             }
         }
         // Dimensions
@@ -74,7 +79,9 @@ impl MetadataHandler {
             let width = meta.get_pixel_width();
             let height = meta.get_pixel_height();
             if width > 0 && height > 0 {
-                metadata.entry("Dimensions".to_string()).or_insert(format!("{}x{}", width, height));
+                metadata
+                    .entry("Dimensions".to_string())
+                    .or_insert(format!("{}x{}", width, height));
             }
         }
         Ok(metadata)
@@ -108,7 +115,9 @@ impl MetadataHandler {
         let red_keys = RED_KEYS;
         let yellow_keys = YELLOW_KEYS;
         let green_keys = GREEN_KEYS;
-        let has_exif = metadata.keys().any(|k| k != "File Size" && k != "Modified" && k != "Dimensions");
+        let has_exif = metadata
+            .keys()
+            .any(|k| k != "File Size" && k != "Modified" && k != "Dimensions");
         if !has_exif {
             if !quiet {
                 eprintln!("No metadata in this image.");
@@ -168,16 +177,17 @@ impl MetadataHandler {
 
                 // Try to pretty-print JSON objects as sub-tags, even if value is a quoted JSON string
                 let trimmed = value.trim();
-                let try_json = if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() > 2 {
-                    // Remove surrounding quotes and unescape
-                    let unquoted = &trimmed[1..trimmed.len()-1];
-                    let unescaped = unquoted.replace("\\\"", "\"");
-                    serde_json::from_str::<serde_json::Value>(&unescaped).ok()
-                } else if trimmed.starts_with('{') && trimmed.ends_with('}') {
-                    serde_json::from_str::<serde_json::Value>(trimmed).ok()
-                } else {
-                    None
-                };
+                let try_json =
+                    if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() > 2 {
+                        // Remove surrounding quotes and unescape
+                        let unquoted = &trimmed[1..trimmed.len() - 1];
+                        let unescaped = unquoted.replace("\\\"", "\"");
+                        serde_json::from_str::<serde_json::Value>(&unescaped).ok()
+                    } else if trimmed.starts_with('{') && trimmed.ends_with('}') {
+                        serde_json::from_str::<serde_json::Value>(trimmed).ok()
+                    } else {
+                        None
+                    };
 
                 if let Some(json) = try_json {
                     if let Some(obj) = json.as_object() {
@@ -188,7 +198,8 @@ impl MetadataHandler {
                         continue;
                     }
                     // fallback: pretty print the whole JSON
-                    let pretty = serde_json::to_string_pretty(&json).unwrap_or_else(|_| value.clone());
+                    let pretty =
+                        serde_json::to_string_pretty(&json).unwrap_or_else(|_| value.clone());
                     println!("{}{}: {}\x1b[0m", color, key, pretty);
                     continue;
                 }

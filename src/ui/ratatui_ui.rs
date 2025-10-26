@@ -1,6 +1,7 @@
 use crate::ui::app::{App, FocusedPanel};
 use crate::ui::image_panel::render_image_panel;
 use anyhow::Result;
+use ratatui::Frame;
 use std::path::PathBuf;
 
 pub struct RatatuiUI {
@@ -30,6 +31,7 @@ impl RatatuiUI {
             ("d", "delete", Color::LightRed),
             ("c", "copy", Color::Green),
             ("space", "select", Color::Cyan),
+            ("a", "select all", Color::Cyan),
             ("h/j/k/l", "nav", Color::White),
         ];
 
@@ -85,31 +87,26 @@ impl RatatuiUI {
             }
         }
 
-        // Directory or no file: show file browser TUI 
+        // Directory or no file: show file browser TUI
         // List files in current dir or given dir
         let dir: &std::path::Path = match file.as_ref() {
             Some(p) if p.is_dir() => p.as_path(),
             Some(p) => p.parent().unwrap_or(std::path::Path::new(".")),
             None => std::path::Path::new("."),
         };
-        self.app.files = match std::fs::read_dir(dir) {
-            Ok(read_dir) => read_dir
-                .filter_map(|e| {
-                    let e = e.ok()?;
-                    let path = e.path();
-                    if path.is_file() {
-                        path.file_name().map(|n| n.to_string_lossy().to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            Err(_) => vec![],
-        };
+        self.app.refresh_file_list(dir);
 
         while self.app.running {
+            // Update terminal dimensions FIRST before any image loading
+            let terminal_size = terminal.size()?;
+            self.app
+                .update_terminal_size(terminal_size.width, terminal_size.height);
+
             // Process any completed background image loads
             self.app.process_image_load_events();
+
+            // Clear expired popup
+            self.app.clear_expired_popup();
 
             // Update metadata cache only when selection changes
             self.app.update_selection(dir);
@@ -121,11 +118,6 @@ impl RatatuiUI {
             let mut visible_height = 0u16;
             let mut max_scroll = 0u16;
             let mut total_lines = 0u16;
-
-            // Update terminal dimensions for image loading
-            let terminal_size = terminal.size()?;
-            self.app
-                .update_terminal_size(terminal_size.width, terminal_size.height);
 
             terminal.draw(|f| {
                 let area = f.area();
@@ -167,14 +159,18 @@ impl RatatuiUI {
                     .iter()
                     .enumerate()
                     .map(|(i, f)| {
-                        if i == self.app.selected {
-                            ListItem::new(format!("> {} <", f)).style(
-                                Style::default()
-                                    .fg(Color::Blue)
-                                    .add_modifier(Modifier::BOLD),
-                            )
+                        let is_selected = self.app.selected_files.contains(f);
+                        let marker = if is_selected { "[x]" } else { "[ ]" };
+                        let content = if i == self.app.selected {
+                            format!("> {} {}", marker, f)
                         } else {
-                            ListItem::new(f.to_string())
+                            format!("  {} {}", marker, f)
+                        };
+                        let item = ListItem::new(content);
+                        if self.app.files_without_metadata.contains(f) {
+                            item.style(Style::default().fg(Color::LightGreen))
+                        } else {
+                            item
                         }
                     })
                     .collect();
@@ -297,6 +293,13 @@ impl RatatuiUI {
                     )
                     .alignment(Alignment::Center);
                 f.render_widget(footer, main_chunks[1]);
+
+                // Add popup rendering after all other panels
+                if self.app.should_show_popup() {
+                    if let Some(ref message) = self.app.popup_message {
+                        Self::render_popup(f, message);
+                    }
+                }
             })?;
 
             let now = Instant::now();
@@ -329,5 +332,50 @@ impl RatatuiUI {
         let _ = terminal::disable_raw_mode();
         let _ = std::io::stdout().execute(terminal::LeaveAlternateScreen);
         Ok(())
+    }
+
+    fn render_popup(f: &mut Frame, message: &str) {
+        use ratatui::{prelude::*, widgets::*};
+
+        let area = f.area();
+
+        // Calculate popup size based on message
+        let lines: Vec<&str> = message.lines().collect();
+        let popup_height = (lines.len() + 4).min(area.height as usize - 4) as u16;
+        let popup_width = lines
+            .iter()
+            .map(|l| l.len())
+            .max()
+            .unwrap_or(30)
+            .max(30)
+            .min(area.width as usize - 4) as u16;
+
+        // Center the popup
+        let popup_area = Rect {
+            x: (area.width.saturating_sub(popup_width)) / 2,
+            y: (area.height.saturating_sub(popup_height)) / 2,
+            width: popup_width,
+            height: popup_height,
+        };
+
+        f.render_widget(Clear, popup_area);
+        let popup = Paragraph::new(message)
+            .block(
+                Block::default()
+                    .title(" Cleanup Result ")
+                    .borders(Borders::ALL)
+                    .border_style(
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .border_type(BorderType::Rounded)
+                    .style(Style::default().bg(Color::Rgb(30, 30, 40))),
+            )
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true })
+            .style(Style::default().fg(Color::White).bg(Color::Rgb(30, 30, 40)));
+
+        f.render_widget(popup, popup_area);
     }
 }

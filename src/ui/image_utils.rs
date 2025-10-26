@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::metadata::MetadataHandler;
+use std::collections::HashMap;
 
 /// Utility struct for image-related (non-TUI) logic
 pub struct ImageUtils {
@@ -7,36 +7,128 @@ pub struct ImageUtils {
     pub cached_metadata: Option<(String, String)>, // (filename, formatted_metadata)
 }
 
-// Sensitivity classification 
+// Sensitivity classification
 pub const RED_KEYS: [&str; 27] = [
-    "GPSLatitude", "GPSLongitude", "GPSAltitude", "GPSLatitudeRef", "GPSLongitudeRef", "GPSAltitudeRef",
-    "DateTimeOriginal", "DateTimeDigitized", "DateTime", "OffsetTime", "OffsetTimeOriginal", "OffsetTimeDigitized", 
-    "Modified", "GPSTimeStamp", "GPSSpeedRef","GPSDateStamp", "GPSProcessingMethod", "GPSSpeed", "GPSTrack", "GPSImgDirection", 
-    "ImageUniqueID", "SubSecTime", "SubSecTimeDigitized", "SubSecTimeOriginal", "ExposureIndex", "LensModel", "MakerNote"
+    "GPSLatitude",
+    "GPSLongitude",
+    "GPSAltitude",
+    "GPSLatitudeRef",
+    "GPSLongitudeRef",
+    "GPSAltitudeRef",
+    "DateTimeOriginal",
+    "DateTimeDigitized",
+    "DateTime",
+    "OffsetTime",
+    "OffsetTimeOriginal",
+    "OffsetTimeDigitized",
+    "Modified",
+    "GPSTimeStamp",
+    "GPSSpeedRef",
+    "GPSDateStamp",
+    "GPSProcessingMethod",
+    "GPSSpeed",
+    "GPSTrack",
+    "GPSImgDirection",
+    "ImageUniqueID",
+    "SubSecTime",
+    "SubSecTimeDigitized",
+    "SubSecTimeOriginal",
+    "ExposureIndex",
+    "LensModel",
+    "MakerNote",
 ];
 
 pub const YELLOW_KEYS: [&str; 65] = [
-    "Make", "Model", "Software", "SceneCaptureType", "DigitalZoomRatio", "FNumber", "ExposureBiasValue",
-    "ExposureMode", "MeteringMode", "ShutterSpeedValue", "ExposureTime", "WhiteBalance", "ApertureValue",
-    "FocalLength", "FocalLengthIn35mmFilm", "PhotographicSensitivity", "Flash", "ExposureProgram", "ExifVersion",
-    "MaxApertureValue", "SceneType", "BrightnessValue", "SensingMethod", "ComponentsConfiguration", 
-    "LightSource", "FlashpixVersion", "InteroperabilityIndex", "InteroperabilityVersion", "HostComputer",
-    "Tag(Exif, 34953)", "Tag(Exif, 42593)", "Tag(Exif, 34965)", "Tag(Tiff, 39424)", "Tag(Exif, 39321)", 
-    "Tag(Tiff, 34970)", "Tag(Tiff, 34979)", "Tag(Exif, 34974)", "Tag(Exif, 39424)", "Tag(Tiff, 39321)",
-    "Artist", "Copyright", "ImageDescription", "UserComment", "DocumentName", "PageName",
-    "LensMake", "LensSerialNumber", "LensSpecification",
-    "SubjectDistance", "SubjectDistanceRange", "Contrast", "Saturation", "Sharpness",
-    "GainControl", "CustomRendered", "CompositeImage", "RelatedSoundFile",
-    "WaterDepth", "Acceleration", "CameraElevationAngle", 
-    "Keywords", "Caption", "Credit", "Byline", "LocationCreated"
+    "Make",
+    "Model",
+    "Software",
+    "SceneCaptureType",
+    "DigitalZoomRatio",
+    "FNumber",
+    "ExposureBiasValue",
+    "ExposureMode",
+    "MeteringMode",
+    "ShutterSpeedValue",
+    "ExposureTime",
+    "WhiteBalance",
+    "ApertureValue",
+    "FocalLength",
+    "FocalLengthIn35mmFilm",
+    "PhotographicSensitivity",
+    "Flash",
+    "ExposureProgram",
+    "ExifVersion",
+    "MaxApertureValue",
+    "SceneType",
+    "BrightnessValue",
+    "SensingMethod",
+    "ComponentsConfiguration",
+    "LightSource",
+    "FlashpixVersion",
+    "InteroperabilityIndex",
+    "InteroperabilityVersion",
+    "HostComputer",
+    "Tag(Exif, 34953)",
+    "Tag(Exif, 42593)",
+    "Tag(Exif, 34965)",
+    "Tag(Tiff, 39424)",
+    "Tag(Exif, 39321)",
+    "Tag(Tiff, 34970)",
+    "Tag(Tiff, 34979)",
+    "Tag(Exif, 34974)",
+    "Tag(Exif, 39424)",
+    "Tag(Tiff, 39321)",
+    "Artist",
+    "Copyright",
+    "ImageDescription",
+    "UserComment",
+    "DocumentName",
+    "PageName",
+    "LensMake",
+    "LensSerialNumber",
+    "LensSpecification",
+    "SubjectDistance",
+    "SubjectDistanceRange",
+    "Contrast",
+    "Saturation",
+    "Sharpness",
+    "GainControl",
+    "CustomRendered",
+    "CompositeImage",
+    "RelatedSoundFile",
+    "WaterDepth",
+    "Acceleration",
+    "CameraElevationAngle",
+    "Keywords",
+    "Caption",
+    "Credit",
+    "Byline",
+    "LocationCreated",
 ];
 
 pub const GREEN_KEYS: [&str; 22] = [
-    "PixelXDimension", "PixelYDimension", "ImageWidth", "ImageLength", "Dimensions", "Compression", "ColorSpace",
-    "XResolution", "YResolution", "ResolutionUnit", "YCbCrPositioning", "JPEGInterchangeFormat", 
-    "JPEGInterchangeFormatLength", "File Size", "Orientation",
-    "BitsPerSample", "PhotometricInterpretation", "PlanarConfiguration", "TransferFunction",
-    "WhitePoint", "PrimaryChromaticities", "ColorMap"
+    "PixelXDimension",
+    "PixelYDimension",
+    "ImageWidth",
+    "ImageLength",
+    "Dimensions",
+    "Compression",
+    "ColorSpace",
+    "XResolution",
+    "YResolution",
+    "ResolutionUnit",
+    "YCbCrPositioning",
+    "JPEGInterchangeFormat",
+    "JPEGInterchangeFormatLength",
+    "File Size",
+    "Orientation",
+    "BitsPerSample",
+    "PhotometricInterpretation",
+    "PlanarConfiguration",
+    "TransferFunction",
+    "WhitePoint",
+    "PrimaryChromaticities",
+    "ColorMap",
 ];
 
 impl ImageUtils {
@@ -48,7 +140,11 @@ impl ImageUtils {
     }
 
     /// Get metadata for display, using cache to avoid re-reading on every frame
-    pub fn get_metadata_for_display(&mut self, selected_file: &str, file_path: &std::path::Path) -> String {
+    pub fn get_metadata_for_display(
+        &mut self,
+        selected_file: &str,
+        file_path: &std::path::Path,
+    ) -> String {
         if let Some((cached_filename, cached_text)) = &self.cached_metadata {
             if cached_filename == selected_file {
                 return cached_text.clone();
@@ -64,7 +160,9 @@ impl ImageUtils {
 
     /// Format metadata for TUI display similar to CLI table format
     pub fn format_metadata_for_tui(metadata: &HashMap<String, String>) -> String {
-        let has_exif = metadata.keys().any(|k| k != "File Size" && k != "Modified" && k != "Dimensions");
+        let has_exif = metadata
+            .keys()
+            .any(|k| k != "File Size" && k != "Modified" && k != "Dimensions");
         if !has_exif {
             let mut result = String::from("No metadata in this image.\n");
             if let Some(size) = metadata.get("File Size") {
@@ -122,15 +220,16 @@ impl ImageUtils {
 
             // Try to pretty-print JSON values, including double-quoted/escaped JSON strings
             let trimmed = value.trim();
-            let try_json = if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() > 2 {
-                let unquoted = &trimmed[1..trimmed.len()-1];
-                let unescaped = unquoted.replace("\\\"", "\"");
-                serde_json::from_str::<serde_json::Value>(&unescaped).ok()
-            } else if trimmed.starts_with('{') || trimmed.starts_with('[') {
-                serde_json::from_str::<serde_json::Value>(trimmed).ok()
-            } else {
-                None
-            };
+            let try_json =
+                if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() > 2 {
+                    let unquoted = &trimmed[1..trimmed.len() - 1];
+                    let unescaped = unquoted.replace("\\\"", "\"");
+                    serde_json::from_str::<serde_json::Value>(&unescaped).ok()
+                } else if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                    serde_json::from_str::<serde_json::Value>(trimmed).ok()
+                } else {
+                    None
+                };
 
             let pretty_value = if let Some(json) = try_json {
                 // Indent all lines by two spaces for top-level JSON object
@@ -162,7 +261,7 @@ impl ImageUtils {
 
     /// Recursively pretty-print JSON values for TUI
     fn pretty_json_value(value: &serde_json::Value, indent: usize) -> String {
-    let pad = " ".repeat(indent);
+        let pad = " ".repeat(indent);
         match value {
             serde_json::Value::Object(map) => {
                 let mut s = String::new();

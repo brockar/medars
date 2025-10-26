@@ -1,7 +1,7 @@
-use chrono::{Utc, DateTime};
-use serde::{Serialize, Deserialize};
-use std::fs::{OpenOptions, create_dir_all, File};
-use std::io::{BufReader, BufRead, Write};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::fs::{create_dir_all, File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -29,7 +29,11 @@ impl Logger {
         if let Some(parent) = self.log_path.parent() {
             let _ = create_dir_all(parent);
         }
-        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&self.log_path) {
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.log_path)
+        {
             if let Ok(json) = serde_json::to_string(entry) {
                 let _ = writeln!(file, "{}", json);
             }
@@ -49,7 +53,7 @@ impl Logger {
         if let Some(max) = max {
             let len = entries.len();
             if len > max {
-                entries.drain(0..len-max);
+                entries.drain(0..len - max);
             }
         }
         entries

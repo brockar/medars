@@ -5,11 +5,13 @@ use metadata::MetadataHandler;
 mod ui;
 use ui::RatatuiUI;
 mod logger;
-use logger::{Logger, LogEntry};
+use logger::{LogEntry, Logger};
 
 #[derive(Parser)]
 #[command(name = "medars")]
-#[command(about = "Inspect, view, or strip metadata from images — fast and easy. (Also works in TUI!)")]
+#[command(
+    about = "Inspect, view, or strip metadata from images — fast and easy. (Also works in TUI!)"
+)]
 #[command(version = "0.1.0")]
 
 struct Cli {
@@ -41,18 +43,22 @@ enum Commands {
     /// Clean metadata from one or more images (supports batch mode and glob patterns)
     ///
     /// Examples
-    /// 
+    ///
     ///   medars clean image.jpg
-    /// 
-    ///   medars clean *.jpg --copy
+    ///
+    ///   medars clean *.jpg -c
     Clean {
-        #[arg(value_name = "FILES", required = true, help = "Image files to clean (supports patterns, e.g. *.jpg for batch mode)")]
+        #[arg(
+            value_name = "FILES",
+            required = true,
+            help = "Image files to clean (supports patterns, e.g. *.jpg for batch mode)"
+        )]
         files: Vec<String>,
         /// Output file path (if not specified, overwrites original; only valid for single file)
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Copy to new file (optional path, or auto-name if not provided)
-        #[arg(long, value_name = "COPY_PATH")]
+        /// Copy to new file (optional path, autorename if not provided)
+        #[arg(short = 'c', long, value_name = "COPY_PATH")]
         copy: Option<Option<PathBuf>>,
         /// Show what would be removed, but do not modify the file
         #[arg(long)]
@@ -72,7 +78,6 @@ enum Commands {
         file: Option<PathBuf>,
     },
 }
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -110,7 +115,12 @@ async fn main() -> anyhow::Result<()> {
                     eprintln!("Error: {}", e);
                 }
             }
-            Commands::Clean { files, output, copy, dry_run } => {
+            Commands::Clean {
+                files,
+                output,
+                copy,
+                dry_run,
+            } => {
                 use glob::glob;
                 let handler = MetadataHandler::new();
                 let mut all_files = Vec::new();
@@ -138,11 +148,17 @@ async fn main() -> anyhow::Result<()> {
                         let meta = handler.get_metadata_map(file)?;
                         if meta.is_empty() {
                             if !cli.quiet {
-                                println!("✅ No metadata found in image (nothing to remove): {}", file.display());
+                                println!(
+                                    "✅ No metadata found in image (nothing to remove): {}",
+                                    file.display()
+                                );
                             }
                         } else {
                             if !cli.quiet {
-                                println!("The following metadata would be removed from {}:", file.display());
+                                println!(
+                                    "The following metadata would be removed from {}:",
+                                    file.display()
+                                );
                                 for (k, v) in meta.iter() {
                                     println!("- {}: {}", k, v);
                                 }
@@ -157,7 +173,10 @@ async fn main() -> anyhow::Result<()> {
                             None => {
                                 let orig = file;
                                 let parent = orig.parent();
-                                let stem = orig.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+                                let stem = orig
+                                    .file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("output");
                                 let ext = orig.extension().and_then(|e| e.to_str()).unwrap_or("");
                                 let mut new_name = format!("{}_medars", stem);
                                 if !ext.is_empty() {
@@ -178,16 +197,30 @@ async fn main() -> anyhow::Result<()> {
                         file.clone()
                     };
                     if let Some(parent) = output_path.parent() {
-                        if parent != std::path::Path::new("") && parent != std::path::Path::new(".") && !parent.exists() {
+                        if parent != std::path::Path::new("")
+                            && parent != std::path::Path::new(".")
+                            && !parent.exists()
+                        {
                             if let Err(e) = std::fs::create_dir_all(parent) {
-                                log::error!("Failed to create output directory {}: {}", parent.display(), e);
-                                eprintln!("Failed to create output directory {}: {}", parent.display(), e);
+                                log::error!(
+                                    "Failed to create output directory {}: {}",
+                                    parent.display(),
+                                    e
+                                );
+                                eprintln!(
+                                    "Failed to create output directory {}: {}",
+                                    parent.display(),
+                                    e
+                                );
                                 logger.log(&LogEntry {
                                     timestamp: chrono::Utc::now(),
                                     action: "remove".to_string(),
                                     file: file.display().to_string(),
                                     result: "failure".to_string(),
-                                    details: Some(format!("Failed to create output directory: {}", e)),
+                                    details: Some(format!(
+                                        "Failed to create output directory: {}",
+                                        e
+                                    )),
                                 });
                                 continue;
                             }
@@ -201,8 +234,14 @@ async fn main() -> anyhow::Result<()> {
                     match handler.remove_metadata(&file, &output_path) {
                         Ok(_) => {
                             if !cli.quiet {
-                                log::info!("✅ Metadata removed successfully, saved on: {}", output_path.display());
-                                println!("✅ Metadata removed successfully, saved on: {}", output_path.display());
+                                log::info!(
+                                    "✅ Metadata removed successfully, saved on: {}",
+                                    output_path.display()
+                                );
+                                println!(
+                                    "✅ Metadata removed successfully, saved on: {}",
+                                    output_path.display()
+                                );
                             }
                             logger.log(&LogEntry {
                                 timestamp: chrono::Utc::now(),
@@ -234,7 +273,14 @@ async fn main() -> anyhow::Result<()> {
                     println!("No log entries found.");
                 } else {
                     for entry in entries {
-                        println!("[{}] {} {} {} {}", entry.timestamp, entry.action, entry.file, entry.result, entry.details.unwrap_or_default());
+                        println!(
+                            "[{}] {} {} {} {}",
+                            entry.timestamp,
+                            entry.action,
+                            entry.file,
+                            entry.result,
+                            entry.details.unwrap_or_default()
+                        );
                     }
                 }
             }

@@ -1,6 +1,6 @@
 use ratatui::{prelude::*, widgets::*};
-use ratatui_image::{StatefulImage, Resize};
 use ratatui_image::protocol::StatefulProtocol;
+use ratatui_image::{Resize, StatefulImage};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum ImageLoadStatus {
@@ -20,32 +20,32 @@ pub fn render_image_panel(
     _file_path: Option<&str>,
 ) {
     use ratatui::prelude::Alignment;
-    
+
     if let Some(state) = image_state {
         let available_area = Rect {
             x: area.x + 1,
-            y: area.y + 2, 
+            y: area.y + 2,
             width: area.width.saturating_sub(2),
             height: area.height.saturating_sub(3),
         };
-        
+
         let margin_x = 2;
         let margin_y = 1;
-        
+
         let centered_area = Rect {
             x: available_area.x + margin_x,
             y: available_area.y + margin_y,
             width: available_area.width.saturating_sub(margin_x * 2),
             height: available_area.height.saturating_sub(margin_y * 2),
         };
-        
+
         // Use Resize::Fit which should center the image within the given area
         // while maintaining aspect ratio
         let widget = StatefulImage::default().resize(Resize::Fit(None));
         f.render_stateful_widget(widget, centered_area, state);
         return;
     }
-    
+
     // Show appropriate message based on loading status
     let (message, style) = match load_status {
         ImageLoadStatus::Loading => ("Loading image...", Style::default().fg(Color::Yellow)),
@@ -60,7 +60,7 @@ pub fn render_image_panel(
             ("📷 Image loaded but not displayed", Style::default().fg(Color::Blue))
         },
     };
-    
+
     let file_name_widget = Paragraph::new(message)
         .alignment(Alignment::Center)
         .style(style)
