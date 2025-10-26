@@ -72,7 +72,7 @@ This project requires the `gexiv2` library and its development headers.
 On Ubuntu/Debian:
 
 ```bash
-sudo apt install libgexiv2-dev
+sudo apt install libgexiv2-2
 ```
 
 On Arch:
