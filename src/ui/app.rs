@@ -640,7 +640,13 @@ impl App {
         if self.files.is_empty() {
             return;
         }
-        self.selected_files = self.files.iter().cloned().collect();
+
+        // If all files are already selected, deselect all. Otherwise, select all.
+        if self.selected_files.len() == self.files.len() {
+            self.selected_files.clear();
+        } else {
+            self.selected_files = self.files.iter().cloned().collect();
+        }
     }
 
     pub fn delete_metadata_of_selected_files(&mut self, dir: &std::path::Path) {
