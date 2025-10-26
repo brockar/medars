@@ -14,9 +14,9 @@ fn load_image_protocol_sync(
     terminal_width: Option<u16>,
     terminal_height: Option<u16>
 ) -> Result<StatefulProtocol, Box<dyn std::error::Error + Send + Sync>> {
-    // Down scale the image to faster preview
-    let max_preview_width = 600;  
-    let max_preview_height = 400; 
+    // Larger preview size for better quality on non-Kitty terminals
+    let max_preview_width = 1200;  
+    let max_preview_height = 800; 
     
     // Determine target size based on terminal or use defaults
     let (target_width, target_height) = if let (Some(width), Some(height)) = (terminal_width, terminal_height) {
@@ -50,8 +50,8 @@ fn load_image_protocol_priority(
     terminal_width: Option<u16>,
     terminal_height: Option<u16>
 ) -> Result<StatefulProtocol, Box<dyn std::error::Error + Send + Sync>> {
-    let max_preview_width = 500;  
-    let max_preview_height = 350; 
+    let max_preview_width = 1000;  
+    let max_preview_height = 700; 
     
     let (target_width, target_height) = if let (Some(width), Some(height)) = (terminal_width, terminal_height) {
         let (terminal_target_width, terminal_target_height) = FastImageLoader::get_terminal_display_size(width, height);
@@ -60,15 +60,14 @@ fn load_image_protocol_priority(
         (max_preview_width, max_preview_height)
     };
 
-    // Load the image using FastImageLoader with very aggressive size constraints
+    // Load the image using FastImageLoader with size constraints
     let img = FastImageLoader::load_image_resized(file_path, target_width, target_height)
         .or_else(|_| -> Result<image::DynamicImage, Box<dyn std::error::Error + Send + Sync>> {
-            // For priority loads, skip the file size check and try to load anyway
             let img = image::open(file_path).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
             let (orig_width, orig_height) = (img.width(), img.height());
             if orig_width > target_width || orig_height > target_height {
-                // Use fastest resize filter for priority loads
-                Ok(img.resize(target_width, target_height, image::imageops::FilterType::Nearest))
+                // Use CatmullRom for balance between speed and quality
+                Ok(img.resize(target_width, target_height, image::imageops::FilterType::CatmullRom))
             } else {
                 Ok(img)
             }
@@ -250,6 +249,9 @@ impl App {
                             self.start_background_image_load(file_path);
                         }
                     }
+                } else {
+                    // Not an image file - clear the image state
+                    self.image_state = None;
                 }
             } else {
                 self.cached_metadata_text = "No files available".to_string();

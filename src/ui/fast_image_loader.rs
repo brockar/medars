@@ -61,14 +61,6 @@ impl FastImageLoader {
 
     /// Load image with automatic resizing to target dimensions for faster processing
     pub fn load_image_resized(file_path: &Path, target_width: u32, target_height: u32) -> Result<DynamicImage> {
-        //if let Ok(metadata) = std::fs::metadata(file_path) {
-            //let file_size_mb = metadata.len() / (1024 * 1024);
-            // Skip files larger than 50MB
-            //if file_size_mb > 50 {
-            //    return Err(anyhow::anyhow!("Image file too large: {}MB", file_size_mb));
-            //}
-        //}
-        
         let img = Self::load_image(file_path)?;
         
         // Calculate optimal resize dimensions while maintaining aspect ratio
@@ -81,8 +73,8 @@ impl FastImageLoader {
             let new_width = (orig_width as f32 * scale) as u32;
             let new_height = (orig_height as f32 * scale) as u32;
             
-            // Use fast resize filter for preview images
-            Ok(img.resize(new_width, new_height, image::imageops::FilterType::Triangle))
+            // Use Lanczos3 for better quality on terminals with limited color/resolution
+            Ok(img.resize(new_width, new_height, image::imageops::FilterType::Lanczos3))
         } else {
             Ok(img)
         }
