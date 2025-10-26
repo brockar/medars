@@ -650,14 +650,17 @@ impl App {
     }
 
     pub fn delete_metadata_of_selected_files(&mut self, dir: &std::path::Path) {
-        let handler = MetadataHandler::new();
         let mut cleaned_files = Vec::new();
         let mut failed_files = Vec::new();
 
         for file in &self.selected_files {
             let file_path = dir.join(file);
             let output_path = file_path.clone(); // Overwrite the original file
-            match handler.remove_metadata(&file_path, &output_path) {
+            match self
+                .image_utils
+                .metadata_handler
+                .remove_metadata(&file_path, &output_path)
+            {
                 Ok(_) => {
                     cleaned_files.push(file.clone());
                 }
@@ -667,14 +670,16 @@ impl App {
             }
         }
 
-        for file in &cleaned_files {
-            let path = dir.join(file);
-            if self.is_image_file(&path) {
-                self.files_without_metadata.insert(file.clone());
-            }
-        }
         if !cleaned_files.is_empty() {
-            self.image_utils.cached_metadata = None;
+            self.refresh_file_list(dir);
+            // After cleaning, force an update of the metadata panel for the current selection
+            if !self.files.is_empty() && self.selected < self.files.len() {
+                let selected_file = &self.files[self.selected];
+                let file_path = dir.join(selected_file);
+                self.cached_metadata_text = self
+                    .image_utils
+                    .get_metadata_for_display(selected_file, &file_path);
+            }
         }
 
         // Build popup message
