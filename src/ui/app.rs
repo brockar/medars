@@ -1,5 +1,6 @@
 use crate::ui::image_utils::ImageUtils;
 use crate::ui::fast_image_loader::FastImageLoader;
+use crate::metadata::MetadataHandler;
 use ratatui_image::protocol::StatefulProtocol;
 use ratatui_image::picker::Picker;
 use tokio::sync::mpsc;
@@ -123,23 +124,23 @@ pub struct App {
 
     pub terminal_width: Option<u16>,
     pub terminal_height: Option<u16>,
+
+    pub selected_files: HashSet<String>,
+    pub popup_message: Option<String>,
+    pub popup_time: Option<Instant>,
 }
 
 impl App {
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
-        // Try to initialize the image picker once during app creation
         let picker = Picker::from_query_stdio().ok();
-        if picker.is_none() {
-            eprintln!("Note: Image preview not available in this terminal. Use a terminal with image support (Kitty, WezTerm, or Ghostty) for full functionality.");
-        }
         App {
             image_utils: ImageUtils::new(),
             image_state: None,
             image_path: None,
             files: Vec::new(),
             selected: 0,
-            previous_selected: usize::MAX, // Force initial load
+            previous_selected: usize::MAX,
             cached_metadata_text: String::new(),
             focused_panel: FocusedPanel::Left,
             mid_scroll: 0,
@@ -147,14 +148,17 @@ impl App {
             image_load_receiver: receiver,
             image_load_sender: sender,
             loading_images: HashSet::new(),
-            failed_images: HashSet::new(), // Start with clean state
-            loaded_images: HashSet::new(), // Track successfully loaded images
+            failed_images: HashSet::new(),
+            loaded_images: HashSet::new(),
             last_frame_time: Instant::now(),
-            pending_current_load: None, // No pending loads initially
-            last_loaded_path: None, // No previously loaded image
+            pending_current_load: None,
+            last_loaded_path: None,
             image_picker: picker,
             terminal_width: None,
             terminal_height: None,
+            selected_files: HashSet::new(),
+            popup_message: None,
+            popup_time: None,
         }
     }
 
@@ -336,7 +340,7 @@ impl App {
     }
 
     /// Keyboard input
-    pub fn handle_input(&mut self, key: crossterm::event::KeyCode, max_scroll: u16, _dir: &std::path::Path) {
+    pub fn handle_input(&mut self, key: crossterm::event::KeyCode, max_scroll: u16, dir: &std::path::Path) {
         match key {
             crossterm::event::KeyCode::Char('q') => self.running = false,
             // Panel focus switching
@@ -373,6 +377,20 @@ impl App {
                 if self.mid_scroll > 0 {
                     self.mid_scroll -= 1;
                 }
+            }
+            crossterm::event::KeyCode::Char(' ') if self.focused_panel == FocusedPanel::Left => {
+                // Toggle selection of the currently highlighted file
+                if let Some(file) = self.files.get(self.selected) {
+                    if self.selected_files.contains(file) {
+                        self.selected_files.remove(file);
+                    } else {
+                        self.selected_files.insert(file.clone());
+                    }
+                }
+            }
+            crossterm::event::KeyCode::Char('d') => {
+                // Delete metadata of selected files
+                self.delete_metadata_of_selected_files(dir);
             }
             _ => {}
         }
@@ -491,5 +509,63 @@ impl App {
                 }
             }
         });
+    }
+
+    pub fn delete_metadata_of_selected_files(&mut self, dir: &std::path::Path) {
+        let handler = MetadataHandler::new();
+        let mut cleaned_files = Vec::new();
+        let mut failed_files = Vec::new();
+        
+        for file in &self.selected_files {
+            let file_path = dir.join(file);
+            let output_path = file_path.clone(); // Overwrite the original file
+            match handler.remove_metadata(&file_path, &output_path) {
+                Ok(_) => {
+                    cleaned_files.push(file.clone());
+                }
+                Err(e) => {
+                    failed_files.push((file.clone(), format!("{}", e)));
+                }
+            }
+        }
+        
+        // Build popup message
+        let mut message = String::new();
+        if !cleaned_files.is_empty() {
+            message.push_str(&format!("✅ Cleaned {} file(s):\n", cleaned_files.len()));
+            for file in &cleaned_files {
+                message.push_str(&format!("  • {}\n", file));
+            }
+        }
+        if !failed_files.is_empty() {
+            if !message.is_empty() {
+                message.push('\n');
+            }
+            message.push_str(&format!("❌ Failed {} file(s):\n", failed_files.len()));
+            for (file, error) in &failed_files {
+                message.push_str(&format!("  • {}: {}\n", file, error));
+            }
+        }
+        
+        self.popup_message = Some(message);
+        self.popup_time = Some(Instant::now());
+        self.selected_files.clear(); // Clear selection after processing
+    }
+
+    /// Check if popup should still be displayed (show for 3 seconds)
+    pub fn should_show_popup(&self) -> bool {
+        if let Some(popup_time) = self.popup_time {
+            popup_time.elapsed().as_secs() < 3
+        } else {
+            false
+        }
+    }
+
+    /// Clear popup if time has expired
+    pub fn clear_expired_popup(&mut self) {
+        if self.popup_time.is_some() && !self.should_show_popup() {
+            self.popup_message = None;
+            self.popup_time = None;
+        }
     }
 }
