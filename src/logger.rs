@@ -59,3 +59,44 @@ impl Logger {
         entries
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_entry_creation_with_all_fields() {
+        let entry = LogEntry {
+            timestamp: Utc::now(),
+            action: "test_action".to_string(),
+            file: "test_file.jpg".to_string(),
+            result: "test_result".to_string(),
+            details: Some("test_details".to_string()),
+        };
+        assert_eq!(entry.action, "test_action");
+        assert!(entry.details.is_some());
+    }
+
+    #[test]
+    fn test_log_entry_serialization_deserialization() {
+        let entry = LogEntry {
+            timestamp: Utc::now(),
+            action: "serialize_test".to_string(),
+            file: "file.jpg".to_string(),
+            result: "success".to_string(),
+            details: None,
+        };
+        
+        let json = serde_json::to_string(&entry).unwrap();
+        let deserialized: LogEntry = serde_json::from_str(&json).unwrap();
+        
+        assert_eq!(entry.action, deserialized.action);
+        assert_eq!(entry.file, deserialized.file);
+    }
+
+    #[test]
+    fn test_logger_path_creation() {
+        let logger = Logger::new();
+        assert!(logger.log_path.to_str().is_some());
+    }
+}

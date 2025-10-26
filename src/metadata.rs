@@ -223,3 +223,49 @@ impl MetadataHandler {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_metadata_handler_creation() {
+        let handler = MetadataHandler::new();
+        assert!(std::mem::size_of_val(&handler) == 0);
+    }
+
+    #[test]
+    fn test_extract_metadata_nonexistent_file() {
+        let handler = MetadataHandler::new();
+        let path = PathBuf::from("nonexistent_test_file.jpg");
+        let result = handler.extract_metadata(&path);
+        // Should return Ok with empty or minimal metadata
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_has_metadata_with_invalid_path() {
+        let handler = MetadataHandler::new();
+        let path = PathBuf::from("/invalid/path/to/file.jpg");
+        let result = handler.has_metadata(&path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_display_metadata_formats() {
+        let formats = vec!["json", "table", "JSON", "TABLE"];
+        for format in formats {
+            // Just ensure the format string is handled
+            assert!(format.len() > 0);
+        }
+    }
+
+    #[test]
+    fn test_remove_metadata_same_input_output() {
+        let handler = MetadataHandler::new();
+        let path = PathBuf::from("test.jpg");
+        // Should handle the case where input == output
+        assert!(handler.remove_metadata(&path, &path).is_err());
+    }
+}

@@ -4,48 +4,66 @@
 
 ---
 
-## WIP
-
 ## Features
 
-- **View metadata**: Display metadata in human-readable table or JSON format
-- **Remove metadata**: Clean images by removing all embedded metadata
-- **Interactive TUI**: Terminal user interface for easy navigation
+- **Check Metadata**: Check if an image contains metadata.
+- **View Metadata**: Display metadata in a human-readable table or JSON format.
+- **Remove Metadata**: Clean images by removing all embedded metadata.
+- **Interactive TUI**: Terminal user interface for easy navigation and image preview.
+- **Log Actions**: Keep a log of all operations performed.
 
 ## Core Functionality
 
-**CLI mode:**
+### CLI mode
 
-- Show metadata:  
+- **Check for metadata:**
+
+  ```bash
+  medars check image.jpg
+  ```
+
+- **Show metadata:**
 
   ```bash
   medars show image.jpg
   ```
 
-- Remove metadata:  
+- **Clean metadata:**
 
   ```bash
   medars clean image.jpg
   ```
 
-- Batch operations:  
+- **Launch the TUI:**
 
   ```bash
-  medars clean *.jpg
+  medars tui
+  ```
+
+  or
+
+  ```bash
+  medars tui <path/to/directory>
+  ```
+
+- **Batch operations:**
+
+  ```bash
+  medars clean "*.jpg"
   medars clean path1.jpg path2.png
   ```
 
-- Flags:
-  - `--copy` → Save as new file.
-  - `--dry-run` → Show what will be removed.
+- **Flags:**
+  - `--copy [PATH]` → Save as a new file. If `PATH` is not provided, it will be saved with a `_medars` suffix.
+  - `--dry-run` → Show what will be removed without modifying the file.
 
 ## Privacy & Security
 
 MEDARS helps protect your privacy by:
 
-- Removing potentially sensitive EXIF data (GPS coordinates, camera settings, timestamps)
-- Working locally - no data sent to external services
-- Preserving image quality while removing metadata
+- Removing potentially sensitive EXIF data (GPS coordinates, camera settings, timestamps).
+- Working locally - no data is sent to external services.
+- Preserving image quality while removing metadata.
 
 ## Dependencies
 
@@ -63,8 +81,21 @@ On Arch:
 yay -S libgexiv2
 ```
 
-If you see an error about `gexiv2.pc` or `gexiv2` not found, make sure the
-library is installed.
+If you see an error about `gexiv2.pc` or `gexiv2` not found, make sure the library is installed.
+
+## Installation
+
+### From Crates.io (once published)
+
+```sh
+cargo install medars
+```
+
+### From Git Repository
+
+```sh
+cargo install --git https://github.com/your-username/medars.git
+```
 
 ## Contributing
 
@@ -73,5 +104,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Acknowledgments
 
 - Built with [Rust](https://www.rust-lang.org/).
-- Uses [exif](https://crates.io/crates/exif) for metadata reading.
+- Uses [rexiv2](https://crates.io/crates/rexiv2) and [kamadak-exif](https://crates.io/crates/kamadak-exif) for metadata handling.
+- CLI powered by [clap](https://crates.io/crates/clap).
 - Terminal UI powered by [ratatui](https://crates.io/crates/ratatui).

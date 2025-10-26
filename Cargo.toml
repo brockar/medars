@@ -30,3 +30,10 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "6.0.0"
 glob = "0.3.2"
 
+[dev-dependencies]
+tempfile = "3.14.0"
+
+[lib]
+name = "medars"
+path = "src/lib.rs"
+
