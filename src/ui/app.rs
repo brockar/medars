@@ -123,6 +123,7 @@ pub struct App {
     pub image_state: Option<StatefulProtocol>,
     pub image_path: Option<String>,
     pub files: Vec<String>,
+    pub files_without_metadata: HashSet<String>,
     pub selected: usize,
     pub previous_selected: usize,
     pub cached_metadata_text: String,
@@ -160,6 +161,7 @@ impl App {
             image_state: None,
             image_path: None,
             files: Vec::new(),
+            files_without_metadata: HashSet::new(),
             selected: 0,
             previous_selected: usize::MAX,
             cached_metadata_text: String::new(),
@@ -367,9 +369,19 @@ impl App {
         }
     }
 
-    fn refresh_file_list(&mut self, dir: &std::path::Path) {
+    pub fn refresh_file_list(&mut self, dir: &std::path::Path) {
         let current_selection = self.files.get(self.selected).cloned();
         self.files = Self::collect_files(dir);
+        self.files_without_metadata.clear();
+
+        for file in &self.files {
+            let path = dir.join(file);
+            if self.is_image_file(&path) {
+                if let Ok(false) = self.image_utils.metadata_handler.has_metadata(&path) {
+                    self.files_without_metadata.insert(file.clone());
+                }
+            }
+        }
 
         if let Some(current) = current_selection {
             if let Some(idx) = self.files.iter().position(|f| f == &current) {
@@ -647,6 +659,16 @@ impl App {
                     failed_files.push((file.clone(), format!("{}", e)));
                 }
             }
+        }
+
+        for file in &cleaned_files {
+            let path = dir.join(file);
+            if self.is_image_file(&path) {
+                self.files_without_metadata.insert(file.clone());
+            }
+        }
+        if !cleaned_files.is_empty() {
+            self.image_utils.cached_metadata = None;
         }
 
         // Build popup message

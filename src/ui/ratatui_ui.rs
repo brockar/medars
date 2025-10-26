@@ -94,20 +94,7 @@ impl RatatuiUI {
             Some(p) => p.parent().unwrap_or(std::path::Path::new(".")),
             None => std::path::Path::new("."),
         };
-        self.app.files = match std::fs::read_dir(dir) {
-            Ok(read_dir) => read_dir
-                .filter_map(|e| {
-                    let e = e.ok()?;
-                    let path = e.path();
-                    if path.is_file() {
-                        path.file_name().map(|n| n.to_string_lossy().to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            Err(_) => vec![],
-        };
+        self.app.refresh_file_list(dir);
 
         while self.app.running {
             // Update terminal dimensions FIRST before any image loading
@@ -179,7 +166,12 @@ impl RatatuiUI {
                         } else {
                             format!("  {} {}", marker, f)
                         };
-                        ListItem::new(content)
+                        let item = ListItem::new(content);
+                        if self.app.files_without_metadata.contains(f) {
+                            item.style(Style::default().fg(Color::LightGreen))
+                        } else {
+                            item
+                        }
                     })
                     .collect();
                 let left_border_style = if self.app.focused_panel == FocusedPanel::Left {
