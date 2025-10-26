@@ -364,7 +364,7 @@ impl RatatuiUI {
             height: popup_height,
         };
         
-        // Semi-transparent background
+        f.render_widget(Clear, popup_area);
         let popup = Paragraph::new(message)
             .block(
                 Block::default()
@@ -372,10 +372,11 @@ impl RatatuiUI {
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
                     .border_type(BorderType::Rounded)
+                    .style(Style::default().bg(Color::Rgb(30, 30, 40)))
             )
             .alignment(Alignment::Center)
             .wrap(Wrap { trim: true })
-            .style(Style::default().fg(Color::White));
+            .style(Style::default().fg(Color::White).bg(Color::Rgb(30, 30, 40)));
         
         f.render_widget(popup, popup_area);
     }

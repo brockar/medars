@@ -341,6 +341,13 @@ impl App {
 
     /// Keyboard input
     pub fn handle_input(&mut self, key: crossterm::event::KeyCode, max_scroll: u16, dir: &std::path::Path) {
+        // If popup is visible, any keypress dismisses it
+        if self.should_show_popup() {
+            self.popup_message = None;
+            self.popup_time = None;
+            return;
+        }
+
         match key {
             crossterm::event::KeyCode::Char('q') => self.running = false,
             // Panel focus switching
@@ -389,8 +396,10 @@ impl App {
                 }
             }
             crossterm::event::KeyCode::Char('d') => {
-                // Delete metadata of selected files
-                self.delete_metadata_of_selected_files(dir);
+                // Delete metadata of selected files (only if files are selected)
+                if !self.selected_files.is_empty() {
+                    self.delete_metadata_of_selected_files(dir);
+                }
             }
             _ => {}
         }
