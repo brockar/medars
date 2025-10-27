@@ -94,7 +94,7 @@ cargo install medars
 ### From Git Repository
 
 ```sh
-cargo install --git https://github.com/your-username/medars.git
+cargo install --git https://github.com/brockar/medars.git
 ```
 
 ## Contributing
