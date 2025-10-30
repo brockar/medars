@@ -157,15 +157,10 @@ impl RatatuiUI {
                     .app
                     .files
                     .iter()
-                    .enumerate()
-                    .map(|(i, f)| {
+                    .map(|f| {
                         let is_selected = self.app.selected_files.contains(f);
                         let marker = if is_selected { "[x]" } else { "[ ]" };
-                        let content = if i == self.app.selected {
-                            format!("> {} {}", marker, f)
-                        } else {
-                            format!("  {} {}", marker, f)
-                        };
+                        let content = format!("{} {}", marker, f);
                         let item = ListItem::new(content);
                         if self.app.files_without_metadata.contains(f) {
                             item.style(Style::default().fg(Color::LightGreen))
@@ -199,8 +194,9 @@ impl RatatuiUI {
                         Style::default()
                             .fg(Color::LightBlue)
                             .add_modifier(Modifier::BOLD),
-                    );
-                f.render_widget(file_list, chunks[0]);
+                    )
+                    .highlight_symbol("> ");
+                f.render_stateful_widget(file_list, chunks[0], &mut self.app.file_list_state);
 
                 // Middle: Metadata (cached)
                 let mid_border_style = if self.app.focused_panel == FocusedPanel::Middle {

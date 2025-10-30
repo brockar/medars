@@ -1,6 +1,7 @@
 use crate::metadata::MetadataHandler;
 use crate::ui::fast_image_loader::FastImageLoader;
 use crate::ui::image_utils::ImageUtils;
+use ratatui::widgets::ListState;
 use ratatui_image::picker::Picker;
 use ratatui_image::protocol::StatefulProtocol;
 use std::collections::HashSet;
@@ -150,6 +151,9 @@ pub struct App {
     pub selected_files: HashSet<String>,
     pub popup_message: Option<String>,
     pub popup_time: Option<Instant>,
+    
+    // File list state for scrolling
+    pub file_list_state: ListState,
 }
 
 impl App {
@@ -182,6 +186,7 @@ impl App {
             selected_files: HashSet::new(),
             popup_message: None,
             popup_time: None,
+            file_list_state: ListState::default(),
         }
     }
 
@@ -397,6 +402,7 @@ impl App {
             self.selected = self.files.len().saturating_sub(1);
         }
 
+        self.file_list_state.select(Some(self.selected));
         self.previous_selected = usize::MAX;
         self.image_utils.cached_metadata = None;
     }
@@ -462,6 +468,7 @@ impl App {
             {
                 if self.selected < self.files.len().saturating_sub(1) {
                     self.selected += 1;
+                    self.file_list_state.select(Some(self.selected));
                 }
             }
             crossterm::event::KeyCode::Up | crossterm::event::KeyCode::Char('k')
@@ -469,6 +476,7 @@ impl App {
             {
                 if self.selected > 0 {
                     self.selected -= 1;
+                    self.file_list_state.select(Some(self.selected));
                 }
             }
             // Scroll metadata
