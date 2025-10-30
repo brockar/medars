@@ -33,6 +33,8 @@ impl RatatuiUI {
             ("space", "select", Color::Cyan),
             ("a", "select all", Color::Cyan),
             ("h/j/k/l", "nav", Color::White),
+            ("Enter", "open dir", Color::Yellow),
+            ("Esc", "parent", Color::Yellow),
         ];
 
         let mut stdout = stdout();
@@ -89,12 +91,15 @@ impl RatatuiUI {
 
         // Directory or no file: show file browser TUI
         // List files in current dir or given dir
-        let dir: &std::path::Path = match file.as_ref() {
-            Some(p) if p.is_dir() => p.as_path(),
-            Some(p) => p.parent().unwrap_or(std::path::Path::new(".")),
-            None => std::path::Path::new("."),
+        let mut current_dir: std::path::PathBuf = match file.as_ref() {
+            Some(p) if p.is_dir() => p.to_path_buf(),
+            Some(p) => p.parent().unwrap_or(std::path::Path::new(".")).to_path_buf(),
+            None => std::path::PathBuf::from("."),
         };
-        self.app.refresh_file_list(dir);
+        
+        // Set the initial directory to prevent navigating above it
+        self.app.set_initial_dir(current_dir.clone());
+        self.app.refresh_file_list(&current_dir);
 
         while self.app.running {
             // Update terminal dimensions FIRST before any image loading
@@ -109,10 +114,10 @@ impl RatatuiUI {
             self.app.clear_expired_popup();
 
             // Update metadata cache only when selection changes
-            self.app.update_selection(dir);
+            self.app.update_selection(&current_dir);
 
             // Preload nearby images for smoother navigation
-            self.app.preload_nearby_images(dir);
+            self.app.preload_nearby_images(&current_dir);
 
             // Calculate visible height for metadata panel (minus borders and title)
             let mut visible_height = 0u16;
@@ -158,11 +163,14 @@ impl RatatuiUI {
                     .files
                     .iter()
                     .map(|f| {
+                        let is_dir = self.app.is_directory_entry(f);
                         let is_selected = self.app.selected_files.contains(f);
-                        let marker = if is_selected { "[x]" } else { "[ ]" };
+                        let marker = if is_dir { "   " } else if is_selected { "[x]" } else { "[ ]" };
                         let content = format!("{} {}", marker, f);
                         let item = ListItem::new(content);
-                        if self.app.files_without_metadata.contains(f) {
+                        if is_dir {
+                            item.style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                        } else if self.app.files_without_metadata.contains(f) {
                             item.style(Style::default().fg(Color::LightGreen))
                         } else {
                             item
@@ -174,11 +182,19 @@ impl RatatuiUI {
                 } else {
                     Style::default()
                 };
+                // Display current directory in title
+                let dir_display = current_dir.to_string_lossy();
+                let dir_title = if dir_display.len() > 30 {
+                    format!("...{}", &dir_display[dir_display.len() - 27..])
+                } else {
+                    dir_display.to_string()
+                };
+                
                 let file_list = List::new(file_items)
                     .block(
                         Block::default()
                             .title(Span::styled(
-                                "Files",
+                                format!(" {} ", dir_title),
                                 (if self.app.focused_panel == FocusedPanel::Left {
                                     Style::default().fg(Color::LightBlue)
                                 } else {
@@ -320,7 +336,11 @@ impl RatatuiUI {
                             }
                         }
                     }
-                    self.app.handle_input(key.code, max_scroll, dir);
+                    if let Some(new_dir) = self.app.handle_input(key.code, max_scroll, &current_dir) {
+                        // Directory navigation requested
+                        current_dir = new_dir;
+                        self.app.refresh_file_list_with_reset(&current_dir, true);
+                    }
                 }
             }
         }

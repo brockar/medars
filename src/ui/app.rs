@@ -154,6 +154,9 @@ pub struct App {
     
     // File list state for scrolling
     pub file_list_state: ListState,
+    
+    // Initial directory to prevent navigating above it
+    pub initial_dir: Option<std::path::PathBuf>,
 }
 
 impl App {
@@ -187,7 +190,12 @@ impl App {
             popup_message: None,
             popup_time: None,
             file_list_state: ListState::default(),
+            initial_dir: None,
         }
+    }
+    
+    pub fn set_initial_dir(&mut self, dir: std::path::PathBuf) {
+        self.initial_dir = Some(dir);
     }
 
     /// Process any pending image load events from background tasks
@@ -243,7 +251,18 @@ impl App {
         if self.selected != self.previous_selected {
             if !self.files.is_empty() && self.selected < self.files.len() {
                 let selected_file = &self.files[self.selected];
-                let file_path = dir.join(selected_file);
+                let actual_filename = self.get_actual_filename(selected_file);
+                let file_path = dir.join(&actual_filename);
+
+                // Skip metadata/image loading for directories
+                if self.is_directory_entry(selected_file) {
+                    self.cached_metadata_text = format!("Directory: {}", actual_filename);
+                    self.image_path = None;
+                    self.image_state = None;
+                    self.previous_selected = self.selected;
+                    self.mid_scroll = 0;
+                    return;
+                }
 
                 // Update cached metadata text
                 self.cached_metadata_text = self
@@ -323,7 +342,12 @@ impl App {
 
         for i in start..end {
             if i != self.selected {
-                let file_path = dir.join(&self.files[i]);
+                let display_name = &self.files[i];
+                if self.is_directory_entry(display_name) {
+                    continue;
+                }
+                let actual_filename = self.get_actual_filename(display_name);
+                let file_path = dir.join(&actual_filename);
                 if self.is_image_file(&file_path) {
                     let file_path_str = file_path.to_string_lossy().to_string();
                     // Only start loading if not already loaded, loading, or failed
@@ -359,40 +383,85 @@ impl App {
 
     fn collect_files(dir: &std::path::Path) -> Vec<String> {
         match std::fs::read_dir(dir) {
-            Ok(read_dir) => read_dir
-                .filter_map(|entry| {
-                    let entry = entry.ok()?;
-                    let path = entry.path();
-                    if path.is_file() {
-                        path.file_name().map(|n| n.to_string_lossy().to_string())
-                    } else {
-                        None
+            Ok(read_dir) => {
+                let mut entries: Vec<String> = read_dir
+                    .filter_map(|entry| {
+                        let entry = entry.ok()?;
+                        let path = entry.path();
+                        let name = path.file_name()?.to_string_lossy().to_string();
+                        
+                        // Skip hidden files/folders (starting with .)
+                        if name.starts_with('.') {
+                            return None;
+                        }
+                        
+                        if path.is_dir() {
+                            Some(format!("[DIR] {}", name))
+                        } else if path.is_file() {
+                            Some(name)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                
+                // Sort: directories first, then files
+                entries.sort_by(|a, b| {
+                    let a_is_dir = a.starts_with("[DIR] ");
+                    let b_is_dir = b.starts_with("[DIR] ");
+                    
+                    match (a_is_dir, b_is_dir) {
+                        (true, false) => std::cmp::Ordering::Less,
+                        (false, true) => std::cmp::Ordering::Greater,
+                        _ => a.cmp(b),
                     }
-                })
-                .collect(),
+                });
+                
+                entries
+            }
             Err(_) => Vec::new(),
         }
     }
+    
+    pub fn get_actual_filename(&self, display_name: &str) -> String {
+        if display_name.starts_with("[DIR] ") {
+            display_name.trim_start_matches("[DIR] ").to_string()
+        } else {
+            display_name.to_string()
+        }
+    }
+    
+    pub fn is_directory_entry(&self, display_name: &str) -> bool {
+        display_name.starts_with("[DIR] ")
+    }
 
     pub fn refresh_file_list(&mut self, dir: &std::path::Path) {
+        self.refresh_file_list_with_reset(dir, false);
+    }
+
+    pub fn refresh_file_list_with_reset(&mut self, dir: &std::path::Path, reset_to_first: bool) {
         let current_selection = self.files.get(self.selected).cloned();
         self.files = Self::collect_files(dir);
         self.files_without_metadata.clear();
 
         for file in &self.files {
-            let path = dir.join(file);
-            if self.is_image_file(&path) {
+            let actual_name = self.get_actual_filename(file);
+            let path = dir.join(&actual_name);
+            if !self.is_directory_entry(file) && self.is_image_file(&path) {
                 if let Ok(false) = self.image_utils.metadata_handler.has_metadata(&path) {
                     self.files_without_metadata.insert(file.clone());
                 }
             }
         }
 
-        if let Some(current) = current_selection {
+        if reset_to_first {
+            // When navigating to a new directory, start at the first item
+            self.selected = 0;
+        } else if let Some(current) = current_selection {
             if let Some(idx) = self.files.iter().position(|f| f == &current) {
                 self.selected = idx;
             } else if !self.files.is_empty() {
-                self.selected = self.files.len().saturating_sub(1);
+                self.selected = 0; // Default to first item instead of last
             } else {
                 self.selected = 0;
             }
@@ -433,34 +502,67 @@ impl App {
         }
     }
 
-    /// Keyboard input
+    /// Keyboard input - returns Option<PathBuf> if directory navigation is needed
     pub fn handle_input(
         &mut self,
         key: crossterm::event::KeyCode,
         max_scroll: u16,
         dir: &std::path::Path,
-    ) {
+    ) -> Option<std::path::PathBuf> {
         // If popup is visible, any keypress dismisses it
         if self.should_show_popup() {
             self.popup_message = None;
             self.popup_time = None;
-            return;
+            return None;
         }
 
         match key {
-            crossterm::event::KeyCode::Char('q') => self.running = false,
+            crossterm::event::KeyCode::Char('q') => {
+                self.running = false;
+                None
+            }
+            // Enter key to navigate into directories or go up with '..'
+            crossterm::event::KeyCode::Enter if self.focused_panel == FocusedPanel::Left => {
+                if let Some(selected_file) = self.files.get(self.selected) {
+                    if self.is_directory_entry(selected_file) {
+                        let actual_filename = self.get_actual_filename(selected_file);
+                        return Some(dir.join(actual_filename));
+                    }
+                }
+                None
+            }
+            // Escape to go to parent directory
+            crossterm::event::KeyCode::Esc if self.focused_panel == FocusedPanel::Left => {
+                // Don't go above the initial directory
+                if let Some(ref initial_dir) = self.initial_dir {
+                    // Canonicalize both paths for proper comparison
+                    if let (Ok(current_canonical), Ok(initial_canonical)) = 
+                        (dir.canonicalize(), initial_dir.canonicalize()) {
+                        if current_canonical == initial_canonical {
+                            return None; // Already at initial directory
+                        }
+                    }
+                }
+                
+                if let Some(parent) = dir.parent() {
+                    return Some(parent.to_path_buf());
+                }
+                None
+            }
             // Panel focus switching
             crossterm::event::KeyCode::Right | crossterm::event::KeyCode::Char('l') => {
                 self.focused_panel = match self.focused_panel {
                     FocusedPanel::Left => FocusedPanel::Middle,
                     FocusedPanel::Middle => FocusedPanel::Left, // cycle back
                 };
+                None
             }
             crossterm::event::KeyCode::Left | crossterm::event::KeyCode::Char('h') => {
                 self.focused_panel = match self.focused_panel {
                     FocusedPanel::Middle => FocusedPanel::Left,
                     FocusedPanel::Left => FocusedPanel::Middle, // cycle back
                 };
+                None
             }
             // Only allow up/down navigation when left
             crossterm::event::KeyCode::Down | crossterm::event::KeyCode::Char('j')
@@ -470,6 +572,7 @@ impl App {
                     self.selected += 1;
                     self.file_list_state.select(Some(self.selected));
                 }
+                None
             }
             crossterm::event::KeyCode::Up | crossterm::event::KeyCode::Char('k')
                 if self.focused_panel == FocusedPanel::Left =>
@@ -478,6 +581,7 @@ impl App {
                     self.selected -= 1;
                     self.file_list_state.select(Some(self.selected));
                 }
+                None
             }
             // Scroll metadata
             crossterm::event::KeyCode::Down | crossterm::event::KeyCode::Char('j')
@@ -486,6 +590,7 @@ impl App {
                 if self.mid_scroll < max_scroll {
                     self.mid_scroll += 1;
                 }
+                None
             }
             crossterm::event::KeyCode::Up | crossterm::event::KeyCode::Char('k')
                 if self.focused_panel == FocusedPanel::Middle =>
@@ -493,32 +598,39 @@ impl App {
                 if self.mid_scroll > 0 {
                     self.mid_scroll -= 1;
                 }
+                None
             }
             crossterm::event::KeyCode::Char(' ') if self.focused_panel == FocusedPanel::Left => {
-                // Toggle selection of the currently highlighted file
+                // Toggle selection of the currently highlighted file (not directories)
                 if let Some(file) = self.files.get(self.selected) {
-                    if self.selected_files.contains(file) {
-                        self.selected_files.remove(file);
-                    } else {
-                        self.selected_files.insert(file.clone());
+                    if !self.is_directory_entry(file) {
+                        if self.selected_files.contains(file) {
+                            self.selected_files.remove(file);
+                        } else {
+                            self.selected_files.insert(file.clone());
+                        }
                     }
                 }
+                None
             }
             crossterm::event::KeyCode::Char('a') if self.focused_panel == FocusedPanel::Left => {
                 self.select_all_files();
+                None
             }
             crossterm::event::KeyCode::Char('d') => {
                 // Delete metadata of selected files (only if files are selected)
                 if !self.selected_files.is_empty() {
                     self.delete_metadata_of_selected_files(dir);
                 }
+                None
             }
             crossterm::event::KeyCode::Char('c') => {
                 if !self.selected_files.is_empty() {
                     self.copy_metadata_of_selected_files(dir);
                 }
+                None
             }
-            _ => {}
+            _ => None,
         }
     }
 
@@ -649,11 +761,19 @@ impl App {
             return;
         }
 
-        // If all files are already selected, deselect all. Otherwise, select all.
-        if self.selected_files.len() == self.files.len() {
+        // Only select actual files, not directories
+        let selectable_files: Vec<String> = self
+            .files
+            .iter()
+            .filter(|f| !self.is_directory_entry(f))
+            .cloned()
+            .collect();
+
+        // If all selectable files are already selected, deselect all. Otherwise, select all.
+        if !selectable_files.is_empty() && self.selected_files.len() == selectable_files.len() {
             self.selected_files.clear();
         } else {
-            self.selected_files = self.files.iter().cloned().collect();
+            self.selected_files = selectable_files.into_iter().collect();
         }
     }
 

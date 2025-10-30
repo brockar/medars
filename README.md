@@ -46,6 +46,17 @@
   medars tui <path/to/directory>
   ```
 
+  **TUI Navigation:**
+  - `j`/`k` or `↑`/`↓` - Navigate files/folders
+  - `h`/`l` or `←`/`→` - Switch between panels
+  - `Enter` - Open selected folder
+  - `Esc` - Go to parent directory
+  - `Space` - Select/deselect file
+  - `a` - Select/deselect all files
+  - `d` - Delete metadata from selected files
+  - `c` - Copy files with metadata removed
+  - `q` - Quit
+
 - **Batch operations:**
 
   ```bash
