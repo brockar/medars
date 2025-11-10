@@ -96,15 +96,9 @@ If you see an error about `gexiv2.pc` or `gexiv2` not found, make sure the libra
 
 ## Installation
 
-### From Crates.io (once published)
-
-```sh
-cargo install medars
-```
-
 ### From Git Repository
 
-```sh
+```bash
 cargo install --git https://github.com/brockar/medars.git
 ```
 
